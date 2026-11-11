@@ -2,17 +2,23 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-A Chrome extension that turns videos into transcripts and study notes. It uses subtitles when available; otherwise it records the tab's audio while the video plays and transcribes it. Nothing is downloaded, so it isn't blocked by sites' anti-download measures.
+Got a pile of saved videos you'd like to turn into notes? Don't want to sit through a whole podcast just to find a few key points? Or simply not sure a video is worth your time?
+
+WatchVid4U is a Chrome extension that turns videos into transcripts and study notes. It's like having an AI watch the video for you, then take notes in the style you choose.
+
+How it works: it records the tab's audio while the video plays and transcribes it. Neither video nor audio is ever downloaded, so it isn't blocked by sites' anti-download measures and works on most pages that play sound. If subtitles are available, it uses them first (currently Bilibili only).
 
 ## Features
 
-- **Subtitles first** on Bilibili; otherwise records automatically and pauses the page when the video ends (blocks autoplay of the next video)
 - **Speech-to-text** via any OpenAI-compatible cloud service, or any local Whisper service
-- **Record several tabs at once** (up to 3 by default); transcriptions are queued one after another
-- **Video frames** (optional): screenshots while recording, which a vision-capable notes model can refer to
 - **Study notes** (optional) from any Chat Completions model, in concise / detailed / minutes styles
+- **Video frames** (optional): screenshots while recording, which a vision-capable notes model can refer to
+- **Silent recording**: by default you won't hear the tab while it records (the recording isn't affected), so you can do something else; or turn the sound on and watch along, and the transcript will be ready shortly after the video ends
+- **Auto-pause at the end**: pauses when the video finishes, with no looping and no autoplaying the next one
+- **Record several tabs at once** (up to 3 by default); transcriptions are queued one after another
 - **Local-first**: materials are stored only in your browser; only services you authorize receive data
 - **English and Simplified Chinese** interface, following your browser language by default
+- **Subtitles first on Bilibili** (on by default): uses subtitles when available, otherwise switches to recording automatically
 
 Supported: Bilibili, YouTube, Douyin and other pages that play audio. Not supported: YouTube Shorts, players in iframes, DRM-protected content.
 
