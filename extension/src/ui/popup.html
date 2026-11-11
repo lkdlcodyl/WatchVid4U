@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WatchVid4U</title>
+<script src="../shared/uiscale.js"></script>
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="../../icons/icon-32.png" alt="" width="22" height="22"><span>WatchVid4U</span><small>帮你看视频</small></div>
+  <nav class="row" aria-label="入口">
+    <button class="icon-btn" id="btnLib" title="材料与笔记" aria-label="材料与笔记"></button>
+    <button class="icon-btn" id="btnFloat" title="在此页显示/隐藏浮窗" aria-label="在此页显示或隐藏浮窗"></button>
+    <button class="icon-btn" id="btnOpt" title="设置" aria-label="设置"></button>
+  </nav>
+</header>
+<main id="main">
+  <section class="page" id="page" aria-label="当前页面"></section>
+  <section id="taskArea" aria-live="polite"></section>
+  <section class="start" id="startArea">
+    <button class="btn primary big" id="btnStart"></button>
+    <button class="btn big" id="btnBegin"></button>
+    <p class="hint" id="startHint"></p>
+  </section>
+  <div id="setupHint"></div>
+</main>
+<script type="module" src="popup.js"></script>
+</body>
+</html>

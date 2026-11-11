@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>WatchVid4U unit tests</title></head>
+<body>
+<pre id="out">running…</pre>
+<script src="../../extension/src/shared/uiscale.js"></script>
+<script src="../../extension/src/content/detector.js"></script>
+<script type="module">
+  import { run } from './harness.js';
+  import './settings.test.js';
+  import './chunking.test.js';
+  import './wav.test.js';
+  import './stt.test.js';
+  import './transcript.test.js';
+  import './llm.test.js';
+  import './prompts.test.js';
+  import './bilibili.test.js';
+  import './markdown.test.js';
+  import './detector.test.js';
+  import './db.test.js';
+  run();
+</script>
+</body>
+</html>

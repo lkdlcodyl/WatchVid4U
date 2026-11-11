@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>材料与笔记 · WatchVid4U</title>
+<link rel="icon" href="../../icons/icon-32.png">
+<script src="../shared/uiscale.js"></script>
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="library.css">
+</head>
+<body>
+<a class="sr-only" href="#detail">跳到内容</a>
+<div class="app" id="app">
+  <aside class="side" aria-label="材料列表">
+    <header class="side-head">
+      <div class="brand"><img src="../../icons/icon-32.png" alt="" width="22" height="22"><h1>材料与笔记</h1></div>
+      <a class="icon-btn" href="options.html" title="设置" aria-label="设置" id="lnkOpt"></a>
+    </header>
+    <div class="toolbar">
+      <label class="check sel-all"><input type="checkbox" id="selAll"><span>全选</span></label>
+      <span class="hint" id="selInfo"></span>
+      <div class="row tb-actions">
+        <button class="btn small" id="btnExport" disabled>导出文字</button>
+        <button class="btn small danger-outline" id="btnDelete" disabled>删除</button>
+      </div>
+    </div>
+    <div class="filters seg" role="group" aria-label="筛选">
+      <button data-f="all" aria-pressed="true">全部</button>
+      <button data-f="text" aria-pressed="false">有逐字稿</button>
+      <button data-f="audio" aria-pressed="false">待转写</button>
+      <button data-f="problem" aria-pressed="false">需处理</button>
+    </div>
+    <ul class="list" id="list" role="listbox" aria-label="材料"></ul>
+    <footer class="side-foot hint" id="cacheInfo"></footer>
+  </aside>
+  <main class="detail" id="detail" tabindex="-1"></main>
+</div>
+<script type="module" src="library.js"></script>
+</body>
+</html>

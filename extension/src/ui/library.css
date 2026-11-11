@@ -1,0 +1,55 @@
+body { min-height: 100vh; }
+.app { display: grid; grid-template-columns: minmax(17rem, 22rem) 1fr; min-height: 100vh; }
+.side { border-right: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; height: 100vh; position: sticky; top: 0; }
+.side-head { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1rem .6rem; }
+.brand { display: flex; align-items: center; gap: .5rem; }
+.brand h1 { font-size: var(--t-lg); }
+.toolbar { display: flex; align-items: center; gap: .5rem; padding: 0 1rem .5rem; flex-wrap: wrap; }
+.toolbar .sel-all { padding: 0; font-size: var(--t-sm); }
+.toolbar .tb-actions { margin-left: auto; }
+.filters { margin: 0 1rem .6rem; display: flex; }
+.filters button { flex: 1; font-size: var(--t-sm); padding: .35em .3em; }
+.list { list-style: none; margin: 0; padding: 0 .5rem 1rem; overflow-y: auto; flex: 1; }
+.item { display: grid; grid-template-columns: auto 1fr; gap: .55rem; padding: .6rem .55rem; border-radius: var(--radius-sm); cursor: pointer; border: 1px solid transparent; }
+.item:hover { background: var(--surface-2); }
+.item[aria-selected="true"] { background: var(--acc-soft); border-color: color-mix(in srgb, var(--acc) 30%, transparent); }
+.item input { margin-top: .25rem; accent-color: var(--acc); width: 1rem; height: 1rem; }
+.item .t { font-weight: var(--w-strong); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.item .m { display: flex; gap: .3rem; flex-wrap: wrap; margin-top: .25rem; align-items: center; color: var(--mut); font-size: var(--t-xs); }
+.side-foot { padding: .6rem 1rem; border-top: 1px solid var(--line); }
+.empty { padding: 2.5rem 1.5rem; text-align: center; color: var(--mut); }
+.empty h2 { color: var(--fg); font-size: var(--t-lg); margin-bottom: .5rem; }
+
+.detail { padding: 1.4rem clamp(1rem, 3vw, 2.4rem) 3rem; min-width: 0; outline: none; }
+.d-head { display: grid; gap: .5rem; margin-bottom: 1rem; max-width: 52rem; }
+.d-head h2 { font-size: var(--t-xl); word-break: break-word; }
+.d-meta { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; color: var(--mut); font-size: var(--t-sm); }
+.d-actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; max-width: 52rem; }
+.tabs { display: flex; gap: .2rem; border-bottom: 1px solid var(--line); margin-bottom: 1.1rem; max-width: 52rem; overflow-x: auto; }
+.tabs button { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: .55rem .8rem; color: var(--fg-2); cursor: pointer; font-weight: var(--w-strong); white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--acc); border-bottom-color: var(--acc); }
+.pane-tools { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-bottom: .9rem; max-width: 52rem; }
+.pane-tools .spacer { flex: 1; }
+.back { display: none; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: .4rem 1rem; font-size: var(--t-sm2); max-width: 46rem; margin: 0 0 1rem; }
+.kv dt { color: var(--mut); }
+.kv dd { margin: 0; word-break: break-word; }
+audio { width: 100%; max-width: 46rem; margin: .4rem 0 1rem; }
+.notice + .notice { margin-top: .5rem; }
+.d-notices { display: grid; gap: .5rem; max-width: 52rem; margin-bottom: 1rem; }
+
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; }
+  .side { height: auto; position: static; border-right: 0; border-bottom: 1px solid var(--line); }
+  .app.show-detail .side { display: none; }
+  .app:not(.show-detail) .detail { display: none; }
+  .back { display: inline-flex; margin-bottom: .6rem; }
+  .list { max-height: none; }
+}
+
+/* 笔记：风格选择与生成按钮同一行 */
+.note-gen { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; max-width: 52rem; padding: .7rem .8rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.note-gen-label { font-weight: var(--w-strong); color: var(--fg-2); font-size: var(--t-sm); }
+.note-gen-hint { margin: .45rem 0 1rem; max-width: 52rem; }
+@media (max-width: 520px) { .note-gen .btn { margin-left: 0; width: 100%; } .note-gen .seg { flex: 1; } .note-gen .seg button { flex: 1; } }
+.d-actions:empty { display: none; }

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设置 · WatchVid4U</title>
+<link rel="icon" href="../../icons/icon-32.png">
+<script src="../shared/uiscale.js"></script>
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+<div class="layout">
+  <nav class="nav" aria-label="设置分类">
+    <div class="brand"><img src="../../icons/icon-32.png" alt="" width="24" height="24"><div><b>WatchVid4U</b><small>设置</small></div></div>
+    <a href="#stt">语音转写</a>
+    <a href="#llm">笔记模型</a>
+    <a href="#subtitle">B站字幕</a>
+    <a href="#record">录音与自动处理</a>
+    <a href="#shortcut">浮窗、快捷键与通知</a>
+    <a href="#storage">存储与外观</a>
+    <a href="#diag">诊断</a>
+    <a href="#privacy">隐私说明</a>
+    <a href="library.html" class="nav-lib">材料与笔记 →</a>
+  </nav>
+  <main class="content" id="content">
+    <section id="welcome" class="card sec welcome" hidden>
+      <h2>欢迎使用 WatchVid4U</h2>
+      <ol>
+        <li><b>B站有字幕的视频</b>：无需任何配置，打开视频页点“开始录制”即可直接得到逐字稿。</li>
+        <li><b>需要录音转写</b>（无字幕的 B站、YouTube、抖音、普通网页）：在下方“语音转写”填写一个 OpenAI 兼容的转写服务并授权，或使用可选的本地服务。</li>
+        <li><b>想要学习笔记</b>：在“笔记模型”配置一个 Chat Completions 服务。</li>
+      </ol>
+      <p class="hint">日常使用只需一次点击：插件自动选择字幕或录音，播完自动暂停网页并转写。</p>
+    </section>
+    <div id="sections"></div>
+  </main>
+</div>
+<script type="module" src="options.js"></script>
+</body>
+</html>
