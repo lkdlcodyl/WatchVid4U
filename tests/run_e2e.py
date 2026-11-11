@@ -613,6 +613,11 @@ def ui_screens(e):
             if scheme == "light" and name == "options":
                 sl = e.c.eval(sid, "(async () => { const r = document.getElementById('ui_scale'); r.value = '110'; r.dispatchEvent(new Event('input')); const live = parseFloat(getComputedStyle(document.documentElement).fontSize); r.dispatchEvent(new Event('change')); await new Promise(z => setTimeout(z, 500)); const st = (await chrome.storage.local.get('settings')).settings.ui.scale; const info = document.getElementById('ui_scale_info').textContent; r.value = '100'; r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); await new Promise(z => setTimeout(z, 300)); return { live, st, info }; })()")
                 check("界面：界面比例滑杆实时预览并保存（110% → 根 17.6px）", abs(sl["live"] - 17.6) < 0.05 and sl["st"] == 110 and "实际 110%" in sl["info"], sl)
+            if name == "library-audio" and scheme == "light":
+                e.c.eval(sid, "(() => { const b = [...document.querySelectorAll('.tabs button')].find(x => x.textContent.includes('音频')); b && b.click(); return true; })()")
+                time.sleep(0.5)
+                nd = e.c.eval(sid, "(() => { const a = document.querySelector('audio'); return { audio: !!a, nodl: a ? a.getAttribute('controlslist') === 'nodownload' : null, btn: [...document.querySelectorAll('button')].some(b => /WAV/.test(b.textContent)) }; })()")
+                check("界面：录音只能试听，不提供下载（无下载按钮、播放器隐藏下载项）", nd["audio"] and nd["nodl"] and not nd["btn"], nd)
             e.c.screenshot(sid, str(OUT / f"{name}-{scheme}.png"))
             errs = [x for x in e.c.console_errors(sid) if x]
             check(f"界面：{name}（{scheme}）无脚本错误", not errs, errs[:3])

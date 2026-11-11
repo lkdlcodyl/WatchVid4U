@@ -384,11 +384,11 @@ function audioPane(m) {
     box.append(dl);
     if (m.frames && m.frames.count) box.append(framesGallery(m));
     if (a.purged) return box;
-    const player = h('audio', { controls: true, preload: 'metadata', 'aria-label': '录音试听' });
+    // 只提供试听，不提供音频文件下载：录音只是生成逐字稿的中间材料（也隐藏播放器自带的下载项）
+    const player = h('audio', { controls: true, preload: 'metadata', controlslist: 'nodownload', 'aria-label': '录音试听', oncontextmenu: (e) => e.preventDefault() });
     const info = h('p', { class: 'hint' });
-    const dlBtn = h('button', { class: 'btn small', disabled: true }, icon('download'), '下载 WAV');
-    box.append(player, info, dlBtn);
-    loadAudio(m, player, info, dlBtn);
+    box.append(player, info);
+    loadAudio(m, player, info);
   }
   return box;
 }
@@ -419,7 +419,7 @@ function framesGallery(m) {
   return wrap;
 }
 
-async function loadAudio(m, player, info, dlBtn) {
+async function loadAudio(m, player, info) {
   try {
     const chunks = await getChunks(m.id);
     if (!chunks.length) {
@@ -441,11 +441,9 @@ async function loadAudio(m, player, info, dlBtn) {
     info.textContent = tt('时长 {d}（按实际录到的采样计算）', { d: fmtDuration(secs) }) + (gap ? tt(' · 检测到分块缺失，部分内容可能损坏') : '');
     if (gap) info.className = 'notice warn';
     player.addEventListener('error', () => {
-      info.textContent = tt('浏览器无法播放这段音频（可能已损坏），仍可尝试下载原文件。');
+      info.textContent = tt('浏览器无法播放这段音频（可能已损坏）。');
       info.className = 'notice warn';
     });
-    dlBtn.disabled = false;
-    dlBtn.onclick = () => downloadBlob(blob, `${safeFilename(m.title)}.wav`);
   } catch (e) {
     info.textContent = tt('读取音频失败。');
     info.className = 'notice err';
