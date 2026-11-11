@@ -488,8 +488,15 @@
   chrome.storage.onChanged.addListener((ch, area) => {
     if (area !== 'local') return;
     if (ch.settings) {
+      const prevLang = uiLang();
       settings = ch.settings.newValue || {};
       applyDensity();
+      // 界面语言变化：重建浮窗以更新文字
+      if (uiLang() !== prevLang && host) {
+        host.remove();
+        host = null;
+        shadow = null;
+      }
       ensureFloat();
     }
     if (ch['float.hidden']) {
@@ -532,12 +539,27 @@
   }
 
   // 不使用 innerHTML：YouTube 等站点启用 Trusted Types，且浮窗内容一律以 DOM API 构建
+  // 界面语言（与扩展页面共用 i18n-en.js 中的译文；中文原文即 key）
+  function uiLang() {
+    const p = settings && settings.ui && settings.ui.lang;
+    if (p === 'zh' || p === 'en') return p;
+    return /^zh/i.test(navigator.language || '') ? 'zh' : 'en';
+  }
+  function tr(str, params) {
+    if (typeof str !== 'string') return str;
+    const EN = globalThis.WV4U_EN || {};
+    let out = uiLang() === 'en' && Object.prototype.hasOwnProperty.call(EN, str) ? EN[str] : str;
+    if (params) out = out.replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
+    return out;
+  }
+
   function h(tag, attrs, ...kids) {
     const el = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs || {})) {
       if (k === 'class') el.className = v;
-      else if (k === 'text') el.textContent = v;
+      else if (k === 'text') el.textContent = tr(v);
       else if (k === 'hidden') el.hidden = !!v;
+      else if (k === 'aria-label' || k === 'title') el.setAttribute(k, tr(v));
       else el.setAttribute(k, v);
     }
     for (const c of kids) if (c) el.append(c);
@@ -589,7 +611,7 @@
         h('p', { class: 'status', role: 'status', 'aria-live': 'polite' }),
         h('div', { class: 'actions idle' }, h('button', { class: 'primary act-start', text: '从当前开始' }), h('button', { class: 'secondary act-begin', text: '从头开始' })),
         h('div', { class: 'actions running', hidden: true }, h('button', { class: 'danger act-stop', text: '停止并保存' }), h('button', { class: 'secondary act-cancel', text: '取消' })),
-        h('label', { class: 'mon' }, h('input', { type: 'checkbox', class: 'act-monitor' }), document.createTextNode(' 同时听声音')),
+        h('label', { class: 'mon' }, h('input', { type: 'checkbox', class: 'act-monitor' }), document.createTextNode(' ' + tr('同时听声音'))),
         h('div', { class: 'links' }, h('button', { class: 'link act-lib', text: '材料与笔记' }), h('button', { class: 'link act-opt', text: '设置' })),
       ),
       h('div', { class: 'toast', role: 'status', 'aria-live': 'polite', hidden: true }),
@@ -642,7 +664,7 @@
     });
     $('.hide').addEventListener('click', () => {
       toggleFloat(false);
-      toast('浮窗已隐藏，可用快捷键或工具栏重新显示');
+      toast(tr('浮窗已隐藏，可用快捷键或工具栏重新显示'));
     });
     const act = (action, extra) => async () => {
       const r = await send({ type: 'float-action', action, ...extra });
@@ -718,17 +740,17 @@
     $('.handle').setAttribute('aria-expanded', String(expanded));
     const dot = $('.dot');
     dot.className = 'dot' + (t && t.phase === 'recording' ? ' rec' : active ? ' busy' : t && (t.phase === 'failed' || t.phase === 'interrupted') ? ' err' : '');
-    let status = '准备就绪：一键获取逐字稿';
+    let status = tr('准备就绪：一键获取逐字稿');
     if (t) {
       const ph = PHASE_TEXT[t.phase] || t.phase;
-      if (active && !here) status = `另一页面有任务进行中：${ph}`;
-      else status = t.phaseText || ph;
-      if (t.phase === 'recording' && t.audio && t.audio.seconds) status = `${t.phaseText || '录音中'} · ${fmt(t.audio.seconds)}`;
+      if (active && !here) status = tr('另一页面有任务进行中：{phase}', { phase: tr(ph) });
+      else status = tr(t.phaseText || ph);
+      if (t.phase === 'recording' && t.audio && t.audio.seconds) status = `${tr(t.phaseText || '录音中')} · ${fmt(t.audio.seconds)}`;
     }
     $('.status').textContent = status;
     $('.actions.idle').hidden = !!active;
     $('.actions.running').hidden = !(active && here);
-    $('.act-stop').textContent = t && t.phase === 'recording' ? '停止并保存' : '停止';
+    $('.act-stop').textContent = tr(t && t.phase === 'recording' ? '停止并保存' : '停止');
     $('.act-monitor').checked = !!(t ? t.monitor : settings && settings.record && settings.record.monitor);
   }
 
@@ -743,7 +765,7 @@
     ensureFloat(true);
     if (!shadow) return;
     const el = shadow.querySelector('.toast');
-    el.textContent = text;
+    el.textContent = tr(text);
     el.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => (el.hidden = true), 6000);

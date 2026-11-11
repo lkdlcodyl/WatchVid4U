@@ -45,26 +45,39 @@
         "https://www.youtube.com/*",
         "https://www.douyin.com/*"
       ],
-      "js": ["src/shared/uiscale.js", "src/content/detector.js", "src/content/content.js"],
+      "js": [
+        "src/shared/i18n-en.js",
+        "src/shared/uiscale.js",
+        "src/content/detector.js",
+        "src/content/content.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     }
   ],
   "commands": {
     "start-current": {
-      "suggested_key": { "default": "Alt+Shift+S" },
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
       "description": "从当前进度开始（字幕优先，必要时录音）"
     },
     "start-beginning": {
-      "suggested_key": { "default": "Alt+Shift+B" },
+      "suggested_key": {
+        "default": "Alt+Shift+B"
+      },
       "description": "从头开始（字幕优先，必要时从开头录音）"
     },
     "stop-save": {
-      "suggested_key": { "default": "Alt+Shift+E" },
+      "suggested_key": {
+        "default": "Alt+Shift+E"
+      },
       "description": "停止并保存当前任务"
     },
     "toggle-float": {
-      "suggested_key": { "default": "Alt+Shift+F" },
+      "suggested_key": {
+        "default": "Alt+Shift+F"
+      },
       "description": "显示或隐藏网页内浮窗"
     }
   },

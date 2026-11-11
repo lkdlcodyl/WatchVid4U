@@ -121,16 +121,22 @@ export function effectiveText(material) {
  * 在对应段落前后插入标记作为“检测证据”。不修改保存的逐字稿。
  * 返回 {text, adEvidence:boolean}
  */
-export function textForLlm(material) {
+export function textForLlm(material, { timestamps = false } = {}) {
   const tr = material.transcript;
   const ads = material.audio?.adIntervals || [];
-  if (!tr || !tr.segments || !ads.length || tr.kind === 'speaker') return { text: tr ? tr.effective : '', adEvidence: false };
+  if (!tr || !tr.segments || tr.kind === 'speaker' || (!ads.length && !timestamps)) return { text: tr ? tr.effective : '', adEvidence: false, timed: false };
   const inAd = (s, e) => ads.some(([a, b]) => Math.min(e, b) - Math.max(s, a) > 0.5 * Math.max(0.1, e - s));
   const lines = [];
   let state = false;
   let marked = false;
+  let lastMark = -Infinity;
   for (const seg of tr.segments) {
     const ad = inAd(seg.s, seg.e);
+    // 附带画面时：约每 30 秒插入一次时间标记，便于模型把画面与讲解对应起来
+    if (timestamps && seg.s - lastMark >= 30) {
+      lines.push(`\n[${fmtClock(seg.s)}] `);
+      lastMark = seg.s;
+    }
     if (ad && !state) {
       lines.push('\n[平台插播广告时段开始（播放器检测）]');
       marked = true;
@@ -140,5 +146,13 @@ export function textForLlm(material) {
     lines.push(seg.t.trim());
   }
   if (state) lines.push('[平台插播广告时段结束]');
-  return { text: lines.join(''), adEvidence: marked };
+  return { text: lines.join('').trim(), adEvidence: marked, timed: timestamps };
+}
+
+function fmtClock(sec) {
+  const s = Math.max(0, Math.round(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }

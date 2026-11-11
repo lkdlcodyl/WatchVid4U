@@ -1,4 +1,5 @@
-import { applyTheme, h, toast, confirmDialog, downloadBlob, errText } from './ui.js';
+import { applyTheme, h, icon, toast, confirmDialog, downloadBlob, errText, t } from './ui.js';
+import { initLang, translateDom, getLang } from '../shared/i18n.js';
 import {
   loadSettings,
   saveSettings,
@@ -43,8 +44,11 @@ const LLM_PRESETS = [
 init();
 
 async function init() {
+  await initLang({ reload: true });
+  translateDom(document);
   applyTheme();
   S = await loadSettings();
+  mountLangSwitch();
   if (location.hash === '#welcome') document.getElementById('welcome').hidden = false;
   render();
   chrome.storage.onChanged.addListener(async (ch, area) => {
@@ -64,7 +68,7 @@ async function init() {
 }
 
 function render() {
-  root.replaceChildren(sttSection(), llmSection(), subtitleSection(), recordSection(), shortcutSection(), storageSection(), diagSection(), privacySection());
+  root.replaceChildren(sttSection(), llmSection(), framesSection(), recordSection(), shortcutSection(), subtitleSection(), storageSection(), diagSection(), privacySection());
   refreshStatus();
   if (location.hash && location.hash !== '#welcome') document.querySelector(location.hash)?.scrollIntoView();
 }
@@ -112,7 +116,7 @@ function numberField(path, label, { min, max, step = 1, unit = '', hint = '' }) 
     input.value = v;
     await setPath(path, v);
   });
-  return h('div', { class: 'field' }, h('label', { for: id, text: `${label}${unit ? `（${unit}）` : ''}` }), input, hint ? h('div', { class: 'hint', text: hint }) : null);
+  return h('div', { class: 'field' }, h('label', { for: id, text: t(label) + (unit ? (getLang() === 'en' ? ` (${t(unit)})` : `（${unit}）`) : '') }), input, hint ? h('div', { class: 'hint', text: hint }) : null);
 }
 
 function section(id, title, lead, ...kids) {
@@ -154,9 +158,9 @@ function cloudConfig() {
   const updEp = () => {
     const ep = sttEndpoint(f.base.value);
     f.base.classList.toggle('invalid', !!f.base.value && !ep);
-    f.endpoint.textContent = ep ? `请求地址：${ep}` : f.base.value ? '地址无效：需要 https://（本地服务请用“本地服务”方式）' : '';
+    f.endpoint.textContent = ep ? t('请求地址：{url}', { url: ep }) : f.base.value ? t('地址无效：需要 https://（本地服务请用“本地服务”方式）') : '';
     const sec = sliceSeconds(Number(f.mb.value) || 25, Number(f.slice.value) || 10);
-    f.sliceInfo.textContent = `长音频将自动按不超过 ${Math.round(sec / 60)} 分钟/片（约 ${(sec * 32000 / 1048576).toFixed(1)} MB）在静音处分片，每片一次请求，可能分别计费。`;
+    f.sliceInfo.textContent = t('长音频将自动按不超过 {min} 分钟/片（约 {mb} MB）在静音处分片，每片一次请求，可能分别计费。', { min: Math.round(sec / 60), mb: ((sec * 32000) / 1048576).toFixed(1) });
   };
   f.sliceInfo = h('div', { class: 'hint' });
   [f.base, f.mb, f.slice].forEach((x) => x.addEventListener('input', updEp));
@@ -170,7 +174,7 @@ function cloudConfig() {
       presets,
       h('div', { class: 'field' }, h('label', { for: 'stt_base', text: '服务地址' }), f.base, f.endpoint, h('div', { class: 'hint', text: '可填写 …/v1 或完整的 …/audio/transcriptions 地址。' })),
       h('div', { class: 'grid-2' }, h('div', { class: 'field' }, h('label', { for: 'stt_model', text: '模型' }), f.model), h('div', { class: 'field' }, h('label', { for: 'stt_key', text: 'API Key' }), f.key)),
-      h('label', { class: 'check' }, f.persist, h('span', null, h('b', { text: '在本机记住 Key' }), h('div', { class: 'hint', text: '默认只保存在本次浏览器会话中（关闭浏览器即清除）。勾选后以未加密形式保存在本机浏览器的扩展数据中，网页和内容脚本无法读取。' }))),
+      h('label', { class: 'check' }, f.persist, h('span', null, h('b', { text: '在本机记住 Key' }), h('div', { class: 'hint', text: '默认勾选：以未加密形式保存在本机浏览器的扩展数据中（网页和内容脚本无法读取），重启浏览器后无需重填。取消勾选则只保存在本次浏览器会话中（关闭浏览器即清除）。' }))),
       h(
         'details',
         null,
@@ -272,7 +276,7 @@ async function testCloudStt() {
   if (!key) return toast('请填写 API Key 再测试');
   await runTest(f.testOut, ep, async (signal) => {
     const r = await transcribeBlob({ endpoint: ep, key, model: f.model.value.trim(), language: f.lang.value.trim(), prompt: '', responseFormat: f.format.value, wavBlob: testToneWav(), timeoutMs: 30000, signal });
-    return `连接成功：服务正常返回转写结果（测试音无语音，文字长度 ${r.text.length}${r.segments ? '，含分段信息' : ''}）。`;
+    return t(r.segments ? '连接成功：服务正常返回转写结果（测试音无语音，文字长度 {n}，含分段信息）。' : '连接成功：服务正常返回转写结果（测试音无语音，文字长度 {n}）。', { n: r.text.length });
   });
 }
 
@@ -297,7 +301,7 @@ async function runTest(out, endpoint, fn) {
   } catch (e) {
     const se = toSafeError(e);
     const d = se.diag || {};
-    out.replaceChildren(h('div', { class: 'notice err', text: `${errText(se)}${d.status ? ` · HTTP ${d.status}` : ''}${d.contentType ? ` · ${d.contentType}` : ''}${d.length != null ? ` · ${d.length} 字节` : ''}` }));
+    out.replaceChildren(h('div', { class: 'notice err', text: `${errText(se)}${d.status ? ` · HTTP ${d.status}` : ''}${d.contentType ? ` · ${d.contentType}` : ''}${d.length != null ? ' · ' + t('{n} 字节', { n: d.length }) : ''}` }));
   }
 }
 
@@ -317,7 +321,7 @@ function localConfig() {
   const updEp = () => {
     const ep = localEndpoint(f.lbase.value);
     f.lbase.classList.toggle('invalid', !!f.lbase.value && !ep);
-    f.lendpoint.textContent = ep ? `请求地址：${ep}` : f.lbase.value ? '地址无效：只接受 http://127.0.0.1 或 http://localhost（可带端口与路径）' : '';
+    f.lendpoint.textContent = ep ? t('请求地址：{url}', { url: ep }) : f.lbase.value ? t('地址无效：只接受 http://127.0.0.1 或 http://localhost（可带端口与路径）') : '';
   };
   f.lbase.addEventListener('input', updEp);
   queueMicrotask(updEp);
@@ -402,11 +406,11 @@ async function testLocal() {
     try {
       const hr = await requestText(`${new URL(ep).origin}/health`, { method: 'GET' }, { timeoutMs: 3000, signal, stage: 'local' });
       const j = hr.status === 200 ? JSON.parse(hr.text) : null;
-      if (j && j.engine) extra = `；识别引擎 ${j.engine}${j.model ? `（${j.model}）` : ''}${typeof j.diarization === 'boolean' ? `；说话人区分：${j.diarization ? '可用' : '不可用'}` : ''}`;
+      if (j && j.engine) extra = t('；识别引擎 {engine}', { engine: j.engine + (j.model ? ` (${j.model})` : '') }) + (typeof j.diarization === 'boolean' ? t(j.diarization ? '；说话人区分：可用' : '；说话人区分：不可用') : '');
     } catch {
       /* 可选信息 */
     }
-    return `转写成功：本地服务正常返回结果（测试音无语音，文字长度 ${r.text.length}${r.segments ? '，含分段信息' : ''}）${extra}。`;
+    return t(r.segments ? '转写成功：本地服务正常返回结果（测试音无语音，文字长度 {n}，含分段信息）' : '转写成功：本地服务正常返回结果（测试音无语音，文字长度 {n}）', { n: r.text.length }) + extra + t('。');
   });
 }
 
@@ -442,7 +446,7 @@ function llmSection() {
   const updEp = () => {
     const ep = llmEndpoint(f.base.value);
     f.base.classList.toggle('invalid', !!f.base.value && !ep);
-    f.endpoint.textContent = ep ? `请求地址：${ep}` : f.base.value ? '地址无效：需要 https://' : '';
+    f.endpoint.textContent = ep ? t('请求地址：{url}', { url: ep }) : f.base.value ? t('地址无效：需要 https://') : '';
   };
   f.base.addEventListener('input', updEp);
   queueMicrotask(updEp);
@@ -451,7 +455,7 @@ function llmSection() {
     'llm',
     '笔记模型（LLM）',
     '与转写服务独立配置。使用非流式 Chat Completions 接口，把有效逐字稿整理为学习笔记。',
-    step('① 配置服务', presets, h('div', { class: 'field' }, h('label', { for: 'llm_base', text: '服务地址' }), f.base, f.endpoint, h('div', { class: 'hint', text: '可填 https://host/v1、带末尾斜杠，或完整的 …/chat/completions；请对照上方“请求地址”确认。' })), h('div', { class: 'grid-2' }, h('div', { class: 'field' }, h('label', { for: 'llm_model', text: '模型' }), f.model), h('div', { class: 'field' }, h('label', { for: 'llm_key', text: 'API Key' }), f.key)), h('label', { class: 'check' }, f.persist, h('span', null, h('b', { text: '在本机记住 Key' }), h('div', { class: 'hint', text: '默认只保存在本次浏览器会话中。' }))), h('details', null, h('summary', { text: '高级：限额与参数' }), h('div', { class: 'grid-2', style: 'margin-top:.8rem' }, h('div', { class: 'field' }, h('label', { for: 'llm_in', text: '最大输入字数' }), f.maxIn), h('div', { class: 'field' }, h('label', { for: 'llm_out', text: '最大输出 tokens' }), f.maxOut), h('div', { class: 'field' }, h('label', { for: 'llm_to', text: '超时（秒）' }), f.timeout), h('div', { class: 'field' }, h('label', { for: 'llm_temp', text: 'temperature' }), f.temp)), h('div', { class: 'hint', text: '逐字稿超过最大输入字数时会提示并停止，不会静默截断。' }))),
+    step('① 配置服务', presets, h('div', { class: 'field' }, h('label', { for: 'llm_base', text: '服务地址' }), f.base, f.endpoint, h('div', { class: 'hint', text: '可填 https://host/v1、带末尾斜杠，或完整的 …/chat/completions；请对照上方“请求地址”确认。' })), h('div', { class: 'grid-2' }, h('div', { class: 'field' }, h('label', { for: 'llm_model', text: '模型' }), f.model), h('div', { class: 'field' }, h('label', { for: 'llm_key', text: 'API Key' }), f.key)), h('label', { class: 'check' }, f.persist, h('span', null, h('b', { text: '在本机记住 Key' }), h('div', { class: 'hint', text: '默认勾选，重启浏览器后无需重填；取消勾选则关闭浏览器即清除。' }))), h('details', null, h('summary', { text: '高级：限额与参数' }), h('div', { class: 'grid-2', style: 'margin-top:.8rem' }, h('div', { class: 'field' }, h('label', { for: 'llm_in', text: '最大输入字数' }), f.maxIn), h('div', { class: 'field' }, h('label', { for: 'llm_out', text: '最大输出 tokens' }), f.maxOut), h('div', { class: 'field' }, h('label', { for: 'llm_to', text: '超时（秒）' }), f.timeout), h('div', { class: 'field' }, h('label', { for: 'llm_temp', text: 'temperature' }), f.temp)), h('div', { class: 'hint', text: '逐字稿超过最大输入字数时会提示并停止，不会静默截断。' }))),
     step('② 用途与授权', h('ul', { class: 'uses' }, h('li', { text: '发送：当前材料的有效逐字稿与固定的整理提示词。' }), h('li', { text: '不发送：网页标题、网址、音频、账号或其他材料。' }), h('li', { text: '用途：生成精简/详细/纪要笔记。费用由服务商按其规则计费。' })), f.status),
     step('③ 保存与测试', h('div', { class: 'actions' }, h('button', { class: 'btn primary', text: '保存并授权', onclick: saveLlm }), h('button', { class: 'btn', text: '测试连接', onclick: testLlm }), h('button', { class: 'btn ghost', text: '撤销授权', onclick: () => revoke('llm') }), h('button', { class: 'btn ghost', text: '清除 Key', onclick: async () => { await clearKey('llm'); f.key.value = ''; refreshStatus(); toast('已清除 Key'); } })), h('p', { class: 'hint', text: '“测试连接”只发送一句固定的测试消息，不使用你的任何逐字稿。' }), f.testOut),
   );
@@ -491,8 +495,73 @@ async function testLlm() {
   if (!key) return toast('请填写 API Key 再测试');
   await runTest(f.testOut, ep, async (signal) => {
     const r = await chatComplete({ endpoint: ep, key, model: f.model.value.trim(), messages: LLM_TEST_MESSAGES, maxTokens: 512, temperature: 0, timeoutMs: 45000, signal });
-    return `连接成功：模型 ${r.model || f.model.value.trim()} 返回了 ${r.content.length} 个字符。`;
+    return t('连接成功：模型 {model} 返回了 {n} 个字符。', { model: r.model || f.model.value.trim(), n: r.content.length });
   });
+}
+
+// ---------- 视频画面 ----------
+/** 录制时截图 + 生成笔记时把截图发给模型参考。发送截图是单独的一项授权（绑定当前笔记服务地址）。 */
+function framesSection() {
+  const ep = llmEndpoint(S.llm.baseUrl);
+  const sendOn = !!(S.llm.sendFrames && consentValid(S.consent.frames, ep));
+  const capture = h('input', { type: 'checkbox', checked: !!S.frames.enabled });
+  const send = h('input', { type: 'checkbox', checked: sendOn });
+  const sendHint = h('div', { class: 'hint' });
+  const updHint = () => {
+    sendHint.textContent = t(!capture.checked && send.checked ? '注意：①“录制时截图”已关闭，之后的录制不会再有截图，此项只对已有截图的材料生效。' : '笔记服务会收到这些截图（JPEG，已缩小），模型需支持图片输入（如 GPT-4o 系列、Qwen-VL、GLM-4V）；不支持时生成笔记会报错并提示。更换笔记服务地址后需要重新确认。');
+  };
+  capture.addEventListener('change', async () => {
+    await setPath('frames.enabled', capture.checked);
+    updHint();
+  });
+  send.addEventListener('change', async () => {
+    const want = send.checked;
+    const cur = llmEndpoint(S.llm.baseUrl);
+    const next = structuredClone(S);
+    if (want) {
+      if (!cur || !consentValid(S.consent.llm, cur)) {
+        send.checked = false;
+        return toast('请先在“笔记模型”中保存并授权笔记服务', 4000);
+      }
+      const body = h(
+        'div',
+        null,
+        h('p', { text: '开启后，生成笔记时除了逐字稿，还会把该视频录制时截取的部分截图发给笔记模型参考。生成的笔记仍是文字，不会插入图片。' }),
+        h('dl', null, h('dt', { text: '接收方' }), h('dd', { text: cur }), h('dt', { text: '额外发送' }), h('dd', { text: t('每次最多 {n} 张截图（JPEG，已缩小），按时间均匀挑选；广告时段的截图不发送', { n: S.llm.maxFrames }) }), h('dt', { text: '要求' }), h('dd', { text: '笔记模型需支持图片输入；不支持时会报错，可随时关闭。' }), h('dt', { text: '费用' }), h('dd', { text: '图片会增加请求用量，由服务商按其规则计费。' })),
+        capture.checked ? null : h('p', { class: 'hint', text: '同时会开启①“录制时截图”，否则没有截图可发送。' }),
+      );
+      if (!(await confirmDialog({ title: '确认把截图发给笔记模型', body, ok: '同意并开启' }))) {
+        send.checked = false;
+        return;
+      }
+      next.llm.sendFrames = true;
+      next.consent.frames = makeConsent(cur, 'frames');
+      next.frames.enabled = true;
+      capture.checked = true;
+    } else {
+      next.llm.sendFrames = false;
+      next.consent.frames = null;
+    }
+    S = await saveSettings(next);
+    updHint();
+    toast(want ? '已开启：生成笔记时把截图发给模型参考' : '已关闭：笔记只发送逐字稿');
+  });
+  updHint();
+  return section(
+    'frames',
+    '视频画面（可选）',
+    '让笔记模型“看到”视频：录制时定时截图，生成笔记时把部分截图连同逐字稿一起发给笔记模型参考，帮助理解幻灯片、图表、代码和屏幕操作等只听声音不够的内容。生成的笔记仍是文字，不会插入图片。',
+    step(
+      '① 录制时截图',
+      h('label', { class: 'check' }, capture, h('span', null, h('b', { text: '录制时定时截取视频画面' }), h('div', { class: 'hint', text: '与录音使用同一次授权，不需要额外权限。截图缩小后只保存在本机（每张约 30–80 KB），可在材料页查看；黑屏与重复画面自动跳过，视频暂停和广告期间不截。B站使用字幕时不播放视频，因此没有截图。' }))),
+      numberField('frames.intervalSec', '截图间隔', { min: 5, max: 600, unit: '秒', hint: '间隔越短，截图越多、占用空间越大。讲解类视频建议 20–60 秒。' }),
+    ),
+    step(
+      '② 生成笔记时参考截图',
+      h('label', { class: 'check' }, send, h('span', null, h('b', { text: '生成笔记时，把截图发给笔记模型参考' }), sendHint)),
+      numberField('llm.maxFrames', '每次最多发送', { min: 1, max: 50, unit: '张', hint: '张数越多，模型看到的画面越全，但请求越大、费用越高。' }),
+    ),
+  );
 }
 
 // ---------- 状态行 ----------
@@ -515,7 +584,7 @@ async function statusChips(service, ep, needsKey) {
   if (!ep) return [h('span', { class: 'chip', text: '尚未配置' })];
   const consent = S.consent[service];
   const perm = await chrome.permissions.contains({ origins: [originPattern(ep)] }).catch(() => false);
-  if (consentValid(consent, ep)) out.push(h('span', { class: 'chip ok', text: `已授权 · ${fmtTime(consent.grantedAt)}` }));
+  if (consentValid(consent, ep)) out.push(h('span', { class: 'chip ok', text: t('已授权 · {time}', { time: fmtTime(consent.grantedAt) }) }));
   else if (consent) out.push(h('span', { class: 'chip warn', text: '地址已变更，需要重新授权' }));
   else out.push(h('span', { class: 'chip warn', text: '未授权' }));
   out.push(h('span', { class: `chip ${perm ? 'ok' : 'warn'}`, text: perm ? '浏览器权限已允许' : '浏览器权限未允许' }));
@@ -552,6 +621,7 @@ function recordSection() {
     'record',
     '录音与自动处理',
     '录音只录制你授权的标签页实际发出的声音。',
+    numberField('record.maxConcurrent', '最多同时录制', { min: 1, max: 6, unit: '个标签页', hint: '可在多个标签页分别开始录制，各自生成逐字稿；录完后依次转写。同时录制越多越占电脑资源。每个标签页仍需你在该页点一次工具栏图标、快捷键或浮窗来开始（浏览器的安全要求）。' }),
     toggle('record.monitor', '录音时同时听声音', '默认静音监听（录音不受影响）；录制中也可在弹窗或浮窗切换。'),
     toggle('record.pauseOnStop', '手动停止时同时暂停网页视频'),
     toggle('record.autoTranscribe', '正常播完后自动转写', '关闭后只保存音频，可稍后在材料页转写。'),
@@ -564,7 +634,9 @@ function recordSection() {
 function shortcutSection() {
   const list = h('ul', { class: 'uses' });
   chrome.commands.getAll().then((cmds) => {
-    for (const c of cmds) if (c.description) list.append(h('li', null, c.description, '：', c.shortcut ? h('span', { class: 'keycap', text: c.shortcut }) : h('span', { class: 'hint', text: '未设置' })));
+    // 快捷键说明来自 manifest（不随界面语言切换），这里按命令名显示当前语言的说明
+    const DESC = { 'start-current': '从当前进度开始（字幕优先，必要时录音）', 'start-beginning': '从头开始（字幕优先，必要时从开头录音）', 'stop-save': '停止并保存当前任务', 'toggle-float': '显示或隐藏网页内浮窗' };
+    for (const c of cmds) if (c.description) list.append(h('li', null, DESC[c.name] || c.description, '：', c.shortcut ? h('span', { class: 'keycap', text: c.shortcut }) : h('span', { class: 'hint', text: '未设置' })));
   });
   const keyInput = h('input', { class: 'input', id: 'hotkey', value: S.float.hotkey, readonly: true, style: 'max-width:8rem', 'aria-describedby': 'hotkey_hint' });
   keyInput.addEventListener('keydown', async (e) => {
@@ -589,7 +661,7 @@ function shortcutSection() {
 // ---------- 存储与外观 ----------
 function storageSection() {
   const usage = h('div', { class: 'hint' }, '计算中…');
-  totalAudioBytes().then((b) => (usage.textContent = `当前音频缓存 ${fmtBytes(b)} / 约 ${fmtBytes(AUDIO_CACHE_LIMIT)}。接近上限时，在开始或结束任务时自动清理最旧的已转写音频（逐字稿、笔记与记录保留）；正在录制或处理的材料不会被清理。`));
+  totalAudioBytes().then((b) => (usage.textContent = t('当前音频缓存 {used} / 约 {limit}。接近上限时，在开始或结束任务时自动清理最旧的已转写音频（逐字稿、笔记与记录保留）；正在录制或处理的材料不会被清理。', { used: fmtBytes(b), limit: fmtBytes(AUDIO_CACHE_LIMIT) })));
   const theme = h('select', { class: 'input', id: 'theme', style: 'max-width:12rem' }, [['system', '跟随系统'], ['light', '浅色'], ['dark', '深色']].map(([v, l]) => h('option', { value: v, text: l, selected: S.ui.theme === v })));
   theme.addEventListener('change', () => setPath('ui.theme', theme.value));
   // 界面比例：自动适配（平台 × 实测字形）基础上的微调，拖动时实时预览
@@ -599,9 +671,9 @@ function storageSection() {
   const scaleInfo = h('div', { class: 'hint', id: 'ui_scale_info' });
   const describe = (ui) => {
     const r = SC.compute({ ui });
-    const osName = { windows: 'Windows', mac: 'macOS', linux: 'Linux', chromeos: 'ChromeOS' }[r.os] || '其他系统';
+    const osName = { windows: 'Windows', mac: 'macOS', linux: 'Linux', chromeos: 'ChromeOS' }[r.os] || t('其他系统');
     const dpr = Math.round((globalThis.devicePixelRatio || 1) * 100);
-    scaleInfo.textContent = `自动适配：${osName} 基准 ${Math.round(r.base * 100)}% × 中文字形校正 ${Math.round(r.fontFactor * 100)}% × 你的微调 ${r.user}% = 实际 ${Math.round(r.scale * 100)}%（正文约 ${(parseFloat(getComputedStyle(document.body).fontSize) || 0).toFixed(1)}px；设备像素比 ${dpr}%）。`;
+    scaleInfo.textContent = t('自动适配：{os} 基准 {base}% × 中文字形校正 {font}% × 你的微调 {user}% = 实际 {scale}%（正文约 {px}px；设备像素比 {dpr}%）。', { os: osName, base: Math.round(r.base * 100), font: Math.round(r.fontFactor * 100), user: r.user, scale: Math.round(r.scale * 100), px: (parseFloat(getComputedStyle(document.body).fontSize) || 0).toFixed(1), dpr });
   };
   const scale = h('input', { type: 'range', id: 'ui_scale', class: 'range', min: String(SC.USER_MIN), max: String(SC.USER_MAX), step: '5', value: String(pct), 'aria-describedby': 'ui_scale_info' });
   scale.addEventListener('input', () => {
@@ -631,7 +703,7 @@ function diagSection() {
     '诊断（低频）',
     '只读记录 YouTube 的广告/正文/未知状态与结束判断，帮助排查。只保存在本机、最多 300 条，不包含标题、网址或任何私密内容，不影响录音。',
     toggle('diag.youtube', '记录 YouTube 播放判定'),
-    h('div', { class: 'actions' }, h('button', { class: 'btn small', text: '导出', onclick: async () => { const r = await chrome.storage.local.get('diag.youtube'); downloadBlob(new Blob([JSON.stringify(r['diag.youtube'] || [], null, 2)], { type: 'application/json' }), 'WatchVid4U-诊断.json'); } }), h('button', { class: 'btn small ghost', text: '清除', onclick: async () => { await chrome.storage.local.remove('diag.youtube'); renderDiagTable(); toast('已清除'); } })),
+    h('div', { class: 'actions' }, h('button', { class: 'btn small', text: '导出', onclick: async () => { const r = await chrome.storage.local.get('diag.youtube'); downloadBlob(new Blob([JSON.stringify(r['diag.youtube'] || [], null, 2)], { type: 'application/json' }), `WatchVid4U-${t('诊断')}.json`); } }), h('button', { class: 'btn small ghost', text: '清除', onclick: async () => { await chrome.storage.local.remove('diag.youtube'); renderDiagTable(); toast('已清除'); } })),
     diagBox,
   );
 }
@@ -653,7 +725,37 @@ function privacySection() {
     h(
       'div',
       { class: 'privacy' },
-      h('ul', null, h('li', { text: '没有项目方服务器、代理、统计或后台数据收集。材料、音频、逐字稿和笔记只保存在本机浏览器。' }), h('li', { text: '只有你授权的转写/笔记服务会收到数据：转写服务只收到当前录音音频与必要参数；笔记服务只收到当前有效逐字稿与固定提示词。网页标题、网址、账号信息从不发送。' }), h('li', { text: '录音只针对你启动任务的标签页；网页本身无法通过插件读取材料、Key 或让插件访问任意地址。' }), h('li', { text: '不下载视频、不使用 yt-dlp、不读取 Cookie 值、不绕过登录、签名、DRM 或访问限制。' }), h('li', { text: 'Key 默认只保存在本次浏览器会话；“记住在本机”时以未加密形式存于扩展数据中。清除 Key、撤销授权、删除材料三者互相独立。' })),
+      h('ul', null, h('li', { text: '没有项目方服务器、代理、统计或后台数据收集。材料、音频、逐字稿和笔记只保存在本机浏览器。' }), h('li', { text: '只有你授权的转写/笔记服务会收到数据：转写服务只收到当前录音音频与必要参数；笔记服务只收到当前有效逐字稿与固定提示词（开启“生成笔记时参考截图”时另含少量截图）。网页标题、网址、账号信息从不发送。' }), h('li', { text: '录音只针对你启动任务的标签页；网页本身无法通过插件读取材料、Key 或让插件访问任意地址。' }), h('li', { text: '不下载视频、不使用 yt-dlp、不读取 Cookie 值、不绕过登录、签名、DRM 或访问限制。' }), h('li', { text: '录制时的截图（开启时）只保存在本机；只有你另外开启并确认“生成笔记时，把截图发给笔记模型参考”后，才会把挑选出的少量截图发给笔记服务。' }), h('li', { text: 'Key 默认记住在本机（未加密，存于扩展数据中），可改为只保存在本次浏览器会话。清除 Key、撤销授权、删除材料三者互相独立。' })),
     ),
   );
+}
+
+/**
+ * 侧栏顶部的语言切换：地球图标 + 各语言的本名（“中文”“English”），
+ * 不论用户只懂哪种语言都能认出这是切换语言。默认跟随浏览器；点击后固定为所选语言，各页面自动刷新。
+ */
+function mountLangSwitch() {
+  const cur = getLang();
+  const set = async (lang) => {
+    if (lang === cur && S.ui.lang === lang) return;
+    const next = structuredClone(S);
+    next.ui.lang = lang;
+    S = await saveSettings(next);
+  };
+  const btn = (lang, label) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    b.textContent = label; // 语言本名不翻译
+    b.setAttribute('aria-pressed', String(cur === lang));
+    b.addEventListener('click', () => set(lang));
+    return b;
+  };
+  const box = document.createElement('div');
+  box.className = 'lang-switch';
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-label', 'Language / 语言');
+  box.title = 'Language / 语言';
+  box.append(icon('globe'), btn('zh', '中文'), btn('en', 'English'));
+  document.querySelector('.nav .brand').after(box);
 }

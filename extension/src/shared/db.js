@@ -1,7 +1,7 @@
 // 本机材料库（IndexedDB）。音频以 PCM Blob 分块保存，浏览器把 Blob 落盘，不长期占用内存。
 
 const DB_NAME = 'watchvid4u';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // v2：新增 frames（录制时的截帧）
 export const AUDIO_CACHE_LIMIT = 1024 * 1024 * 1024; // ~1 GB
 const CLEAN_TARGET = 0.8 * AUDIO_CACHE_LIMIT;
 
@@ -36,6 +36,10 @@ export function openDb() {
       if (!db.objectStoreNames.contains('chunks')) {
         const c = db.createObjectStore('chunks', { keyPath: ['materialId', 'seq'] });
         c.createIndex('materialId', 'materialId');
+      }
+      if (!db.objectStoreNames.contains('frames')) {
+        const f = db.createObjectStore('frames', { keyPath: ['materialId', 'seq'] });
+        f.createIndex('materialId', 'materialId');
       }
       if (!db.objectStoreNames.contains('raw')) db.createObjectStore('raw', { keyPath: ['materialId', 'kind'] });
       // 仅扩展页面可访问的键值区（内容脚本运行在网页源下，无法读取）：用于“记住在本机”的 Key
@@ -134,6 +138,21 @@ export async function getChunkMeta(materialId) {
   return list.map((c) => ({ seq: c.seq, startSample: c.startSample, sampleCount: c.sampleCount, rms: c.rms, bytes: c.bytes }));
 }
 
+/** 截帧：{materialId, seq, t（录音时间轴秒）, blob(JPEG), w, h, bytes} */
+export async function addFrame(frame) {
+  const db = await openDb();
+  const tx = db.transaction('frames', 'readwrite');
+  tx.objectStore('frames').put(frame);
+  await done(tx);
+}
+
+export async function getFrames(materialId) {
+  const db = await openDb();
+  const idx = db.transaction('frames').objectStore('frames').index('materialId');
+  const list = await reqP(idx.getAll(IDBKeyRange.only(materialId)));
+  return list.sort((a, b) => a.seq - b.seq);
+}
+
 export async function putRaw(materialId, kind, data) {
   const db = await openDb();
   const tx = db.transaction('raw', 'readwrite');
@@ -155,13 +174,15 @@ async function deleteByIndex(store, materialId) {
 /** 批量删除：单个事务，完整成功或完整失败 */
 export async function deleteMaterials(ids) {
   const db = await openDb();
-  const tx = db.transaction(['materials', 'chunks', 'raw'], 'readwrite');
+  const tx = db.transaction(['materials', 'chunks', 'raw', 'frames'], 'readwrite');
   const ms = tx.objectStore('materials');
   const cs = tx.objectStore('chunks');
   const rs = tx.objectStore('raw');
+  const fs = tx.objectStore('frames');
   for (const id of ids) {
     ms.delete(id);
     await deleteByIndex(cs, id);
+    await deleteByIndex(fs, id);
     rs.delete(IDBKeyRange.bound([id, ''], [id, '￿']));
   }
   await done(tx);

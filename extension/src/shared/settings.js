@@ -34,8 +34,12 @@ export const DEFAULT_SETTINGS = Object.freeze({
     maxOutputTokens: 4096,
     timeoutSec: 240,
     temperature: 0.3,
+    sendFrames: false, // 生成笔记时附带录制时截取的画面（需模型支持图片输入，且需单独授权）
+    maxFrames: 20, // 每次最多附带的画面数
   },
-  consent: { stt: null, local: null, llm: null },
+  // 录制时定时截取画面（只保存在本机；是否发给模型由 llm.sendFrames 决定）
+  frames: { enabled: false, intervalSec: 30 },
+  consent: { stt: null, local: null, llm: null, frames: null },
   keyPersist: { stt: true, local: true, llm: true },
   subtitle: {
     enabled: true,
@@ -46,6 +50,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     timeoutSec: 12,
   },
   record: {
+    maxConcurrent: 3, // 最多同时录制的标签页数（1–6）
     monitor: false,
     pauseOnStop: true,
     autoTranscribe: true,
@@ -54,7 +59,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   note: { auto: false, mode: 'concise', ignorePromo: false },
   notify: { enabled: true },
   float: { enabled: true, hotkeyEnabled: false, hotkey: '`' },
-  ui: { theme: 'system', scale: 100 }, // scale: 用户微调百分比 80–125（旧版 density 会被迁移，见 shared/uiscale.js）
+  ui: { theme: 'system', scale: 100, lang: 'auto' }, // lang: auto（跟随浏览器）| zh | en // scale: 用户微调百分比 80–125（旧版 density 会被迁移，见 shared/uiscale.js）
   diag: { youtube: false },
 });
 

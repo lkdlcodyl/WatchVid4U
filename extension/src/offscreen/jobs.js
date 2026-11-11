@@ -1,5 +1,8 @@
 // 转写与笔记任务（在 offscreen 文档中执行，不依赖任何用户页面保持打开）。
-import { getMaterial, getChunks, updateMaterial, putRaw } from '../shared/db.js';
+import { getMaterial, getChunks, updateMaterial, putRaw, getFrames } from '../shared/db.js';
+import { selectFrames, fmtTs } from '../shared/frames.js';
+import { initLang, t as tr } from '../shared/i18n.js';
+initLang();
 import { AppError } from '../shared/errors.js';
 import { planSlices, trimTrailingSilence, planSignature } from '../shared/chunking.js';
 import { wavBlobForRange, SAMPLE_RATE } from '../shared/wav.js';
@@ -48,7 +51,7 @@ export async function runTranscribe({ materialId, cfg, signal, onProgress }) {
     const isLast = slice.index === slices.length - 1;
     const s2 = isLast && cfg.service !== 'local' ? trimTrailingSilence(rms, slice, SAMPLE_RATE) : slice;
     const blob = wavBlobForRange(chunks, s2.start, s2.end);
-    if (blob.size > cfg.maxUploadBytes) throw new AppError('local_too_large', { stage: 'stt', detail: `单片 ${(blob.size / 1048576).toFixed(1)} MB` });
+    if (blob.size > cfg.maxUploadBytes) throw new AppError('local_too_large', { stage: 'stt', detail: tr('单片 {mb} MB', { mb: (blob.size / 1048576).toFixed(1) }) });
     const prev = partial.results.filter((r) => r.index < slice.index && r.text).sort((a, b) => b.index - a.index)[0];
     const prompt = buildSlicePrompt(cfg.prompt, prev ? prev.text : '');
     let res;
@@ -72,7 +75,7 @@ export async function runTranscribe({ materialId, cfg, signal, onProgress }) {
         mm.sttPartial = { ...partial, failedAt: slice.index, totalSlices: slices.length, updatedAt: Date.now() };
         return mm;
       });
-      if (e instanceof AppError) e.detail = [e.detail, `第 ${slice.index + 1}/${slices.length} 片`].filter(Boolean).join('；');
+      if (e instanceof AppError) e.detail = [e.detail, tr('第 {i}/{n} 片', { i: slice.index + 1, n: slices.length })].filter(Boolean).join('；');
       throw e;
     }
     const { segments, dropped } = filterSegments(res.segments, cfg.filterLowConfidence);
@@ -120,14 +123,21 @@ export async function runTranscribe({ materialId, cfg, signal, onProgress }) {
   return { chars: transcript.effective.length, kind: transcript.kind, version: saved.transcriptVersion };
 }
 
-/** cfg: {endpoint, key, model, maxInputChars, maxTokens, temperature, timeoutMs, ignorePromo} */
+/** cfg: {endpoint, key, model, maxInputChars, maxTokens, temperature, timeoutMs, ignorePromo, maxFrames} */
 export async function runNote({ materialId, mode, cfg, signal }) {
   const m = await getMaterial(materialId);
   if (!m) throw new AppError('db', { stage: 'llm', detail: '材料不存在' });
   if (!m.transcript || !m.transcript.effective) throw new AppError('transcript_missing', { stage: 'llm' });
-  const { text, adEvidence } = textForLlm(m);
+  // 附带画面：仅当用户开启并授权、且该材料录制时保存了画面
+  let frames = [];
+  if (cfg.maxFrames > 0 && m.frames && m.frames.count) {
+    const all = await getFrames(materialId);
+    const picked = selectFrames(all, cfg.maxFrames, m.audio?.adIntervals || []);
+    frames = await Promise.all(picked.map(async (f) => ({ t: f.t, label: fmtTs(f.t), dataUrl: await blobToDataUrl(f.blob) })));
+  }
+  const { text, adEvidence, timed } = textForLlm(m, { timestamps: frames.length > 0 });
   if (text.length > cfg.maxInputChars) {
-    throw new AppError('local_too_large', { stage: 'llm', detail: `逐字稿 ${text.length} 字，超过设置的 ${cfg.maxInputChars} 字上限；未截断发送` });
+    throw new AppError('local_too_large', { stage: 'llm', detail: tr('逐字稿 {n} 字，超过设置的 {max} 字上限；未截断发送', { n: text.length, max: cfg.maxInputChars }) });
   }
   const messages = buildNoteMessages({
     transcript: text,
@@ -136,17 +146,28 @@ export async function runNote({ materialId, mode, cfg, signal }) {
     ignorePromo: cfg.ignorePromo,
     adEvidence,
     isAudioDerived: m.transcript.source === 'stt',
+    frames,
+    timed,
   });
-  const res = await chatComplete({
-    endpoint: cfg.endpoint,
-    key: cfg.key,
-    model: cfg.model,
-    messages,
-    maxTokens: cfg.maxTokens,
-    temperature: cfg.temperature,
-    timeoutMs: cfg.timeoutMs,
-    signal,
-  });
+  let res;
+  try {
+    res = await chatComplete({
+      endpoint: cfg.endpoint,
+      key: cfg.key,
+      model: cfg.model,
+      messages,
+      maxTokens: cfg.maxTokens,
+      temperature: cfg.temperature,
+      timeoutMs: cfg.timeoutMs,
+      signal,
+    });
+  } catch (e) {
+    // 带图片的请求被拒绝时，大多是模型不支持图片输入
+    if (frames.length && e && (e.code === 'http_bad_request' || e.code === 'http_not_found')) {
+      e.detail = `${e.detail ? e.detail + tr('；') : ''}${tr('本次发送了 {n} 张截图，当前模型可能不支持图片输入：请换用支持图片的模型，或在设置 →“视频画面”中关闭“生成笔记时，把截图发给笔记模型参考”', { n: frames.length })}`;
+    }
+    throw e;
+  }
   await updateMaterial(materialId, (mm) => {
     mm.notes = mm.notes || {};
     mm.notes[mode] = {
@@ -157,10 +178,20 @@ export async function runNote({ materialId, mode, cfg, signal }) {
       transcriptKind: mm.transcript.kind,
       model: res.model || cfg.model,
       adEvidence,
+      frames: frames.length,
     };
     mm.lastNoteMode = mode;
     mm.lastError = null;
     return mm;
   });
   return { chars: res.content.length };
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
 }

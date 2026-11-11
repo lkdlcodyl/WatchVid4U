@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 // B站字幕：发现、选择、核对与解析。网络传输由调用方注入（在页面同源上下文中发起，不伪造来源/签名）。
 import { AppError } from './errors.js';
 
@@ -152,7 +153,7 @@ export function parseSubtitleBody(json, durationSec) {
   if (durationSec > 0) {
     if (lastTo > durationSec + 15 || lines[0].from > durationSec) throw new AppError('sub_mismatch', { stage: 'subtitle', detail: '字幕时间超出视频时长' });
     const coverage = lastTo / durationSec;
-    if (coverage < 0.6 && durationSec - lastTo > 90) throw new AppError('sub_incomplete', { stage: 'subtitle', detail: `字幕约覆盖 ${Math.round(coverage * 100)}%` });
+    if (coverage < 0.6 && durationSec - lastTo > 90) throw new AppError('sub_incomplete', { stage: 'subtitle', detail: t('字幕约覆盖 {pct}%', { pct: Math.round(coverage * 100) }) });
   }
   return { lines, lastTo };
 }

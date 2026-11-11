@@ -1,4 +1,8 @@
 // 界面公共工具：消息、主题、DOM 构建（只用 textContent，不拼接 HTML）、提示、确认框。
+// h() 会自动翻译 text / title / aria-label / placeholder 与字符串子节点中能精确匹配的界面文案。
+import { t, getLang } from '../shared/i18n.js';
+import { messageFor } from '../shared/errors.js';
+export { t };
 
 export async function sw(type, payload = {}) {
   try {
@@ -31,19 +35,20 @@ export function h(tag, attrs, ...kids) {
     for (const [k, v] of Object.entries(attrs)) {
       if (v == null || v === false) continue;
       if (k === 'class') el.className = v;
-      else if (k === 'text') el.textContent = v;
+      else if (k === 'text') el.textContent = t(v);
       else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
       else if (k === 'hidden') el.hidden = !!v;
       else if (k === 'disabled') el.disabled = !!v;
       else if (k === 'checked') el.checked = !!v;
       else if (k === 'value') el.value = v;
       else if (k === 'dataset') Object.assign(el.dataset, v);
+      else if (k === 'title' || k === 'aria-label' || k === 'placeholder') el.setAttribute(k, t(v));
       else el.setAttribute(k, v === true ? '' : v);
     }
   }
   for (const c of kids.flat()) {
     if (c == null || c === false) continue;
-    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    el.append(c instanceof Node ? c : document.createTextNode(t(String(c))));
   }
   return el;
 }
@@ -64,6 +69,7 @@ const ICONS = {
   note: 'M6 4.5h9l3 3v12H6zM9 11h6M9 14.5h6',
   check: 'M5 12.5l4.5 4.5L19 7.5',
   alert: 'M12 4l9 16H3zM12 10v4.5M12 17.2v.3',
+  globe: 'M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM3.5 12h17M12 3.5c2.3 2.4 3.5 5.2 3.5 8.5s-1.2 6.1-3.5 8.5M12 3.5C9.7 5.9 8.5 8.7 8.5 12s1.2 6.1 3.5 8.5',
 };
 
 export function icon(name) {
@@ -144,7 +150,10 @@ export function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+/** 错误说明：按错误码取当前语言的说明（切换语言后旧错误也会显示为新语言） */
 export function errText(e) {
   if (!e) return '';
-  return (e.message || '操作失败') + (e.detail ? `（${e.detail}）` : '');
+  const msg = e.code ? t(messageFor(e.code)) : t(e.message || '操作失败');
+  const detail = e.detail ? t(e.detail) : '';
+  return msg + (detail ? (getLang() === 'en' ? ` (${detail})` : `（${detail}）`) : '');
 }

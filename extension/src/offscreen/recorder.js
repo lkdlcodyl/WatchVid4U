@@ -1,7 +1,9 @@
 // 标签页音频录制：tabCapture 流 → 16 kHz 单声道 PCM → 每约 2 秒落盘一块。
+// 支持多个标签页同时录制：每路录音以 materialId 区分，互不影响。
 // 监听（让用户听到声音）走独立的 AudioContext，只改变输出增益，不影响录音数据。
 import { addChunk, updateMaterial } from '../shared/db.js';
 import { floatToInt16, frameRms, SAMPLE_RATE } from '../shared/wav.js';
+import { FrameGrabber } from './frames.js';
 
 const CHUNK_SAMPLES = SAMPLE_RATE * 2;
 const SILENCE_LEVEL = 0.003;
@@ -9,20 +11,26 @@ const SILENCE_LEVEL = 0.003;
 export class TabRecorder {
   constructor(emit) {
     this.emit = emit; // (type, payload) => void
-    this.active = null;
+    this.recs = new Map(); // materialId -> 录音状态
   }
 
   get busy() {
-    return !!this.active;
+    return this.recs.size > 0;
   }
 
-  async start({ streamId, materialId, monitor }) {
-    if (this.active) throw Object.assign(new Error('busy'), { code: 'task_busy' });
+  ids() {
+    return [...this.recs.keys()];
+  }
+
+  /** frames: {enabled, intervalSec}：同时定时截取画面（与音频共用同一个授权流） */
+  async start({ streamId, materialId, monitor, frames = null }) {
+    if (this.recs.has(materialId)) throw Object.assign(new Error('busy'), { code: 'task_busy' });
+    const wantVideo = !!(frames && frames.enabled);
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } },
-        video: false,
+        video: wantVideo ? { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId, maxWidth: 1280, maxHeight: 720, maxFrameRate: 2 } } : false,
       });
     } catch (e) {
       throw Object.assign(new Error(String(e && e.message)), { code: 'capture_failed', detail: e && e.name ? e.name : '' });
@@ -78,8 +86,14 @@ export class TabRecorder {
       adIntervals: [],
       writeError: null,
       ended: false,
+      grabber: null,
     };
-    this.active = a;
+    const vtrack = wantVideo ? stream.getVideoTracks()[0] : null;
+    if (vtrack) {
+      a.grabber = new FrameGrabber({ track: vtrack, materialId, intervalSec: frames.intervalSec });
+      await a.grabber.start().catch(() => (a.grabber = null));
+    }
+    this.recs.set(materialId, a);
     node.port.onmessage = (e) => {
       if (e.data === 'flushed') {
         a.onFlushed && a.onFlushed();
@@ -88,7 +102,7 @@ export class TabRecorder {
       this.onSamples(a, e.data);
     };
     stream.getAudioTracks()[0]?.addEventListener('ended', () => {
-      if (this.active === a && !a.ended) this.emit('rec-track-ended', { materialId });
+      if (this.recs.get(materialId) === a && !a.ended) this.emit('rec-track-ended', { materialId });
     });
     return { sampleRate: SAMPLE_RATE };
   }
@@ -107,8 +121,11 @@ export class TabRecorder {
       if (a.levelAcc < SILENCE_LEVEL) a.silentSec += sec || 1;
       else a.silentSec = 0;
       a.lastLevelEmit = now;
-      this.emit('rec-level', { materialId: a.materialId, seconds: (a.writtenSamples + a.pendingSamples) / SAMPLE_RATE, silentSec: Math.round(a.silentSec), level: Math.round(a.levelAcc * 1000) / 1000 });
+      const tNow = (a.writtenSamples + a.pendingSamples) / SAMPLE_RATE;
+      this.emit('rec-level', { materialId: a.materialId, seconds: tNow, silentSec: Math.round(a.silentSec), level: Math.round(a.levelAcc * 1000) / 1000 });
       a.levelAcc = 0;
+      // 截帧跟随录音时间轴：暂停（门控）时不会走到这里；广告期间不截
+      if (a.grabber && a.adOpen == null) a.grabber.tick(tNow);
     }
     if (a.pendingSamples >= CHUNK_SAMPLES) this.writeChunk(a);
   }
@@ -154,20 +171,21 @@ export class TabRecorder {
     return a.writeChain;
   }
 
-  setMonitor(on) {
-    if (this.active) this.active.monGain.gain.setTargetAtTime(on ? 1 : 0, this.active.monCtx.currentTime, 0.02);
+  setMonitor(materialId, on) {
+    const a = this.recs.get(materialId);
+    if (a) a.monGain.gain.setTargetAtTime(on ? 1 : 0, a.monCtx.currentTime, 0.02);
   }
 
   /** 视频暂停时门控写入（录音范围如实对应实际播放内容） */
-  setGate(paused) {
-    const a = this.active;
+  setGate(materialId, paused) {
+    const a = this.recs.get(materialId);
     if (!a) return;
     a.gated = !!paused;
   }
 
   /** 记录平台广告时段（以录音时间轴计） */
-  setAd(isAd) {
-    const a = this.active;
+  setAd(materialId, isAd) {
+    const a = this.recs.get(materialId);
     if (!a) return;
     const t = (a.writtenSamples + a.pendingSamples) / SAMPLE_RATE;
     if (isAd && a.adOpen == null) a.adOpen = t;
@@ -181,8 +199,8 @@ export class TabRecorder {
    * 停止并落盘最后一段。tailMs：结束后继续收集的尾音时间（补足音频管线延迟，保住尾句）。
    * 返回 {samples, bytes, adIntervals, writeError}
    */
-  async stop({ tailMs = 0 } = {}) {
-    const a = this.active;
+  async stop(materialId, { tailMs = 0 } = {}) {
+    const a = this.recs.get(materialId);
     if (!a) return null;
     a.ended = true;
     if (tailMs > 0 && !a.gated) await new Promise((r) => setTimeout(r, tailMs));
@@ -200,12 +218,13 @@ export class TabRecorder {
       }
     });
     a.gated = true;
+    const frames = a.grabber ? await a.grabber.stop() : null;
     try {
       a.stream.getTracks().forEach((t) => t.stop());
     } catch {
       /* ignore */
     }
-    if (a.adOpen != null) this.setAd(false);
+    if (a.adOpen != null) this.setAd(materialId, false);
     await this.writeChunk(a);
     await a.writeChain;
     try {
@@ -214,8 +233,8 @@ export class TabRecorder {
     } catch {
       /* ignore */
     }
-    this.active = null;
-    return { samples: a.writtenSamples, bytes: a.bytes, adIntervals: a.adIntervals, writeError: a.writeError ? String(a.writeError.name || 'db') : null };
+    this.recs.delete(materialId);
+    return { samples: a.writtenSamples, bytes: a.bytes, adIntervals: a.adIntervals, frames, writeError: a.writeError ? String(a.writeError.name || 'db') : null };
   }
 }
 

@@ -35,3 +35,20 @@ main { padding: 0 .9rem .9rem; display: grid; gap: .7rem; }
 .dot.warn { background: var(--warn); }
 @keyframes pulse { 50% { opacity: .3; } }
 .warns { display: grid; gap: .35rem; }
+
+/* 其他标签页的任务（同时录制） */
+.others { display: grid; gap: .45rem; }
+.others:empty { display: none; }
+.others-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; color: var(--mut); font-size: var(--t-sm); }
+.mini { padding: .55rem .7rem; display: grid; gap: .45rem; }
+.mini .task-head .dot { margin-top: .4rem; }
+.mini-main { flex: 1; min-width: 0; }
+.mini-title { font-weight: var(--w-strong); font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+/* 长标题不撑宽弹窗：网格列允许收缩到 0，由省略号截断 */
+main { grid-template-columns: minmax(0, 1fr); }
+.others, .mini, .mini .task-head { min-width: 0; }
+/* 英文副标题较长：窄弹窗中隐藏，保证顶栏图标不换行 */
+html[lang="en"] .brand small { display: none; }
+.top nav { flex-wrap: nowrap; }

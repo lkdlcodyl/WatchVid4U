@@ -53,3 +53,12 @@ audio { width: 100%; max-width: 46rem; margin: .4rem 0 1rem; }
 .note-gen-hint { margin: .45rem 0 1rem; max-width: 52rem; }
 @media (max-width: 520px) { .note-gen .btn { margin-left: 0; width: 100%; } .note-gen .seg { flex: 1; } .note-gen .seg button { flex: 1; } }
 .d-actions:empty { display: none; }
+
+/* 录制画面 */
+.frames-wrap { margin: 0 0 1.2rem; max-width: 46rem; }
+.frames-h { font-size: var(--t-sm2); font-weight: var(--w-strong); margin: 0 0 .5rem; color: var(--fg-2); }
+.frames { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: .5rem; }
+.frame { position: relative; display: block; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); aspect-ratio: 16 / 9; }
+.frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.frame span { position: absolute; left: .3rem; bottom: .3rem; padding: 0 .35rem; border-radius: 4px; background: rgb(0 0 0 / .65); color: #fff; font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.frame:hover, .frame:focus-visible { border-color: var(--acc); }

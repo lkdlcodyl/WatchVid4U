@@ -35,3 +35,11 @@
 .scale-row { flex-wrap: nowrap; }
 .range { flex: 1; min-width: 6rem; accent-color: var(--acc); }
 .scale-out { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; color: var(--fg-2); }
+
+/* 侧栏顶部的语言切换（地球图标 + 语言本名） */
+.lang-switch { display: flex; align-items: center; gap: .3rem; margin: 0 .5rem .8rem; padding: .2rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); }
+.lang-switch svg { width: 1.05rem; height: 1.05rem; flex: none; margin: 0 .15rem 0 .3rem; color: var(--fg-2); }
+.lang-switch button { flex: 1; border: 0; background: transparent; color: var(--fg-2); font: inherit; font-size: var(--t-sm); font-weight: var(--w-medium); padding: .25rem .5rem; border-radius: 999px; cursor: pointer; }
+.lang-switch button[aria-pressed="true"] { background: var(--acc); color: #fff; font-weight: var(--w-strong); }
+.lang-switch button:not([aria-pressed="true"]):hover { background: var(--acc-soft); color: var(--acc); }
+@media (max-width: 760px) { .lang-switch { width: 100%; margin: 0 0 .4rem; } }

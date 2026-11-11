@@ -37,6 +37,7 @@ describe('settings', () => {
     assert.equal(t.keyService, 'local');
     assert.equal(t.needsKey, false);
     assert.equal(s.keyPersist.local, true, 'Key 默认记住在本机');
+    assert.equal(s.record.maxConcurrent, 3, '默认最多同时录制 3 个');
     const r = applySettingsChange(s, { ...s, local: { ...s.local, baseUrl: 'http://127.0.0.1:8000/v1' } });
     assert.deepEqual(r.clearKeys, ['local']);
     const c = { ...t, consent: makeConsent(t.endpoint, 'x') };

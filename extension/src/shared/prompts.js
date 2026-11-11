@@ -41,7 +41,11 @@ const MODE_RULES = {
 - 单人讲解不得虚构会议、参会者或讨论过程。`,
 };
 
-export function buildNoteMessages({ transcript, mode, platform, ignorePromo, adEvidence, isAudioDerived }) {
+/**
+ * frames：[{t, label, dataUrl}]，按时间顺序；有画面时 user 消息改为“文字 + 图片”的多模态内容。
+ * timed：逐字稿是否带 [m:ss] 时间标记。
+ */
+export function buildNoteMessages({ transcript, mode, platform, ignorePromo, adEvidence, isAudioDerived, frames = [], timed = false }) {
   const extra = [];
   if (ignorePromo) {
     extra.push('【商业推广】用户选择忽略一般商业推广：与主题无关的口播广告、赞助、带货、关注/点赞/投币号召可以不写进笔记；但与主题相关的产品事实、案例，以及无法确定是否为推广的内容要保留。');
@@ -55,12 +59,28 @@ export function buildNoteMessages({ transcript, mode, platform, ignorePromo, adE
       extra.push('【平台广告】这份逐字稿来自 YouTube 录音，可能混有平台插播广告；若某段内容能明确判断是与视频主题无关的平台广告，请不要写进笔记；不能确定的保留。不要声称做过广告检测或已过滤全部广告。');
     }
   }
-  // 隐私：不发送网页标题、URL 或账号信息，只发送有效逐字稿与固定提示。
+  if (frames.length) {
+    extra.push(
+      `【视频画面】随逐字稿附带了 ${frames.length} 张录制时按时间截取的视频画面，每张前标注了它在视频中的时间${timed ? '，逐字稿中的 [m:ss] 是对应的讲解时间' : ''}。本次允许使用画面：上面第 1 条中“不添加画面信息”的限制改为“只可使用随附画面中清晰可见的内容”。请用画面补充逐字稿无法表达的信息（幻灯片或图表上的文字与数据、代码、屏幕操作步骤、演示的对象），并融入相应位置；不要逐张描述画面，不要编造画面中看不清的内容；画面与讲解无关（如片头、广告、空镜）时忽略它。`,
+    );
+  }
+  // 隐私：不发送网页标题、URL 或账号信息，只发送有效逐字稿、（用户开启时）录制画面与固定提示。
   const system = [BASE_RULES, MODE_RULES[mode] || MODE_RULES.concise, ...extra].join('\n\n');
-  const user = `请按上述要求整理下面的逐字稿：\n\n<transcript>\n${escapeTagLike(transcript)}\n</transcript>`;
+  const user = `请按上述要求整理下面的逐字稿${frames.length ? '（视频画面附在其后）' : ''}：\n\n<transcript>\n${escapeTagLike(transcript)}\n</transcript>`;
+  if (!frames.length) {
+    return [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ];
+  }
+  const parts = [{ type: 'text', text: user }];
+  for (const f of frames) {
+    parts.push({ type: 'text', text: `画面 @ ${f.label}` });
+    parts.push({ type: 'image_url', image_url: { url: f.dataUrl, detail: 'low' } });
+  }
   return [
     { role: 'system', content: system },
-    { role: 'user', content: user },
+    { role: 'user', content: parts },
   ];
 }
 

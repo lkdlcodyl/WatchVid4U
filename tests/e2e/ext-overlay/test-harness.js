@@ -1,5 +1,5 @@
 import { loadSettings, saveSettings, setKey, makeConsent, sttEndpoint, llmEndpoint, localEndpoint } from './src/shared/settings.js';
-import { listMaterials, getMaterial, getChunks, putMaterial, addChunk, deleteMaterials } from './src/shared/db.js';
+import { listMaterials, getMaterial, getChunks, getFrames, putMaterial, addChunk, deleteMaterials } from './src/shared/db.js';
 import { floatToInt16, frameRms } from './src/shared/wav.js';
 
 const sw = (type, payload = {}) => chrome.runtime.sendMessage({ target: 'sw', type, ...payload });
@@ -35,6 +35,19 @@ window.T = {
     await chrome.storage.local.set({ settings: s });
     return true;
   },
+  /** 开启截帧并确认“生成笔记时附带画面”（绑定当前笔记服务地址） */
+  async enableFrames(intervalSec = 5, maxFrames = 20, consent = true) {
+    const s = await loadSettings();
+    s.frames = { enabled: true, intervalSec };
+    s.llm.sendFrames = true;
+    s.llm.maxFrames = maxFrames;
+    s.consent.frames = consent ? makeConsent(llmEndpoint(s.llm.baseUrl), 'frames') : null;
+    await chrome.storage.local.set({ settings: s });
+    return true;
+  },
+  async frames(id) {
+    return (await getFrames(id)).map((f) => ({ seq: f.seq, t: f.t, type: f.blob.type, bytes: f.bytes, w: f.w, h: f.h }));
+  },
   async patchSettings(patch) {
     const s = await loadSettings();
     for (const [path, v] of Object.entries(patch)) {
@@ -52,8 +65,16 @@ window.T = {
     const tabs = (await chrome.tabs.query({})).filter((x) => x.id !== self && !(x.url || '').startsWith('chrome-extension://'));
     return tabs.length ? Math.max(...tabs.map((x) => x.id)) : null;
   },
+  /** 最近开始的任务（兼容单任务场景） */
   async task() {
-    return (await chrome.storage.session.get('task')).task || null;
+    const all = Object.values((await chrome.storage.session.get('tasks')).tasks || {});
+    return all.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))[0] || null;
+  },
+  /** 指定标签页的任务（进行中优先） */
+  async taskForTab(tabId) {
+    const all = Object.values((await chrome.storage.session.get('tasks')).tasks || {}).filter((t) => t.tabId === tabId);
+    all.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+    return all[0] || null;
   },
   async materials() {
     return (await listMaterials()).map((m) => ({ id: m.id, title: m.title, platform: m.platform, source: m.source, status: m.status, processing: m.processing, audio: m.audio, transcript: m.transcript ? { kind: m.transcript.kind, effective: m.transcript.effective, source: m.transcript.source, droppedSegments: m.transcript.droppedSegments, sliceCount: m.transcript.sliceCount } : null, transcriptVersion: m.transcriptVersion, notes: m.notes, lastError: m.lastError, sttPartial: m.sttPartial ? { failedAt: m.sttPartial.failedAt, done: m.sttPartial.results.length, total: m.sttPartial.totalSlices } : null, subtitle: m.subtitle }));
@@ -89,6 +110,7 @@ window.T = {
   async clearAll() {
     const all = await listMaterials();
     await deleteMaterials(all.map((m) => m.id));
+    for (let i = 0; i < 6; i++) await sw('cancel');
     await sw('dismiss-task');
     return all.length;
   },

@@ -60,6 +60,8 @@ class E2E:
         self.base = f"chrome-extension://{self.ext_id}"
         _, self.h = self.c.new_tab(f"{self.base}/test-harness.html")
         self.c.wait_for(self.h, "window.__ready === true", timeout=20)
+        # 检查项按中文界面编写：固定界面语言为中文（“跟随浏览器”在英文环境下会切到英文）
+        self.T("return T.patchSettings({ 'ui.lang': 'zh' })")
 
     def T(self, expr, timeout=60):
         return self.c.eval(self.h, f"(async () => {{ {expr} }})()", timeout=timeout)
@@ -307,6 +309,98 @@ def s_manual_stop(e):
 
 
 @scenario
+def s_multi_tab(e):
+    """多个标签页同时录制：各自独立录音与结束，超过上限时拒绝，转写依次排队"""
+    mock("/mock/reset")
+    e.T("return T.configure({ sttVariant: 'stt-slow', patch: { 'record.maxConcurrent': 2 } })")
+    tid1, sid1, tab1 = e.open_page("https://www.youtube.com/watch?v=NOADM1")
+    tid2, sid2, tab2 = e.open_page("https://www.youtube.com/watch?v=NOADM2")
+    r1 = e.T(f"return T.sw('start', {{ tabId: {tab1}, mode: 'current' }})")
+    r2 = e.T(f"return T.sw('start', {{ tabId: {tab2}, mode: 'current' }})")
+    check("两个标签页都能开始", r1.get("ok") and r2.get("ok") and not r2.get("already"), (r1.get("error"), r2.get("error")))
+
+    def wait_tab(tab, phases, timeout=30):
+        end = time.time() + timeout
+        t = None
+        while time.time() < end:
+            t = e.T(f"return T.taskForTab({tab})")
+            if t and t.get("phase") in phases:
+                return t
+            time.sleep(0.3)
+        raise CDPError(f"tab {tab} did not reach {phases}; last={t and t.get('phase')} {t and t.get('phaseText')}")
+
+    t1 = wait_tab(tab1, ["recording"], 15)
+    t2 = wait_tab(tab2, ["recording"], 15)
+    check("两个任务同时处于录音中", t1["phase"] == "recording" and t2["phase"] == "recording" and t1["materialId"] != t2["materialId"])
+    st = e.T("return T.sw('get-state')")
+    check("后台记录两个进行中的任务", st.get("capturing") == 2 and len([x for x in st.get("tasks", []) if x["phase"] == "recording"]) == 2, st.get("capturing"))
+    tid3, sid3, tab3 = e.open_page("https://www.youtube.com/watch?v=NOADM3")
+    r3 = e.T(f"return T.sw('start', {{ tabId: {tab3}, mode: 'current' }})")
+    check("超过同时录制上限时拒绝并说明原因", not r3.get("ok") and (r3.get("error") or {}).get("code") == "task_limit", r3)
+    e.close(tid3)
+    time.sleep(3)
+    e.T(f"return T.sw('stop', {{ taskId: {json.dumps(t1['id'])} }})")
+    time.sleep(0.5)
+    a2 = e.T(f"return T.taskForTab({tab2})")
+    check("停止一个任务不影响另一个继续录音", a2["phase"] == "recording", a2["phase"])
+    e.T(f"return T.sw('stop', {{ taskId: {json.dumps(t2['id'])} }})")
+    queued = False
+    end = time.time() + 10
+    while time.time() < end and not queued:
+        for tab in (tab1, tab2):
+            x = e.T(f"return T.taskForTab({tab})")
+            if x and (x.get("stt") or {}).get("state") == "queued":
+                queued = True
+        time.sleep(0.3)
+    check("第二个转写进入排队", queued)
+    d1 = wait_tab(tab1, ["done", "failed"], 40)
+    d2 = wait_tab(tab2, ["done", "failed"], 40)
+    check("两个任务都完成转写", d1["phase"] == "done" and d2["phase"] == "done" and d1["stt"]["state"] == "done" and d2["stt"]["state"] == "done", (d1.get("phaseText"), d2.get("phaseText")))
+    calls = sorted(x["t"] for x in mock("/mock/log") if x["kind"] == "stt")
+    check("转写依次进行，没有同时发送", len(calls) == 2 and calls[1] - calls[0] >= 5.5, calls)
+    for m in (d1, d2):
+        info = e.T(f"return T.audioInfo({json.dumps(m['materialId'])})")
+        check("每个标签页各自保存了录音", info["seconds"] > 2, info)
+    v1, v2 = e.video(sid1), e.video(sid2)
+    check("停止后两个网页都已暂停", v1["paused"] and v2["paused"], (v1, v2))
+    e.close(tid1)
+    e.close(tid2)
+
+
+@scenario
+def s_frames(e):
+    """录制时截取画面：保存在本机、跳过重复，笔记附带画面（需单独确认），未确认时不发送"""
+    mock("/mock/reset")
+    e.T("return T.configure({ patch: { 'note.auto': true, 'record.autoTranscribe': true } })")
+    e.T("return T.enableFrames(5, 20)")
+    tid, sid, tab = e.open_page("https://www.youtube.com/watch?v=NOADF1")
+    e.T(f"return T.sw('start', {{ tabId: {tab}, mode: 'current' }})")
+    t = e.wait_task(["done", "failed", "interrupted"], 60)
+    check("截帧任务完成（录音、转写、笔记）", t["phase"] == "done" and t["note"]["state"] == "done", t.get("phaseText"))
+    m = e.T(f"return T.material({json.dumps(t['materialId'])})")
+    fr = e.T(f"return T.frames({json.dumps(t['materialId'])})")
+    check("录制时按间隔保存了画面", (m.get("frames") or {}).get("count", 0) >= 2 and len(fr) == m["frames"]["count"], (m.get("frames"), len(fr)))
+    check("画面为缩小后的 JPEG，带录音时间", all(f["type"] == "image/jpeg" and f["w"] <= 768 and f["bytes"] > 0 for f in fr) and all(fr[i]["t"] < fr[i + 1]["t"] for i in range(len(fr) - 1)), fr[:3])
+    llm = [x for x in mock("/mock/log") if x["kind"] == "llm"]
+    check("笔记请求附带了画面（JPEG，数量与保存一致）", len(llm) == 1 and llm[0]["images"] == len(fr) and llm[0]["images_jpeg"] and llm[0]["frames_rule"], llm and {k: llm[0][k] for k in ("images", "images_jpeg", "frames_rule")})
+    check("附带画面时逐字稿带时间标记", llm and "[0:00]" in llm[0]["user"], llm and llm[0]["user"][:80])
+    note = (m.get("notes") or {}).get("concise") or {}
+    check("笔记记录了参考的画面数", note.get("frames") == len(fr), note.get("frames"))
+    # 未确认（或已撤销）“附带画面”时：只发送逐字稿
+    mock("/mock/reset")
+    e.T("return T.enableFrames(5, 20, false)")
+    e.T(f"return T.sw('material-note', {{ materialId: {json.dumps(t['materialId'])}, mode: 'detailed' }})")
+    end = time.time() + 20
+    llm = []
+    while time.time() < end and not llm:
+        llm = [x for x in mock("/mock/log") if x["kind"] == "llm"]
+        time.sleep(0.3)
+    check("未确认附带画面时不发送任何画面", llm and llm[0]["images"] == 0 and not llm[0]["frames_rule"], llm and llm[0].get("images"))
+    e.T("return T.patchSettings({ 'frames.enabled': false, 'llm.sendFrames': false })")
+    e.close(tid)
+
+
+@scenario
 def s_long_audio(e):
     """长音频：自动分片、按序合并、失败保留进度并从失败处继续、不覆盖旧稿"""
     mock("/mock/reset")
@@ -439,6 +533,46 @@ def ui_screens(e):
         ("library-narrow", f"{e.base}/src/ui/library.html#{sub}", 390, 800),
         ("options", f"{e.base}/src/ui/options.html", 1100, 1400),
     ]
+    # 多任务：弹窗列出其他标签页的任务（注入示例任务数据，只检查界面）
+    tid, sid = e.c.new_tab("about:blank")
+    e.c.send("Emulation.setDeviceMetricsOverride", {"width": 360, "height": 640, "deviceScaleFactor": 1, "mobile": False}, session=sid)
+    e.c.send("Page.enable", session=sid)
+    e.c.send("Page.navigate", {"url": pages[0][1]}, session=sid)
+    time.sleep(1.4)
+    now = int(time.time() * 1000)
+    fake = {
+        "t_a": {"id": "t_a", "tabId": 99991, "platform": "youtube", "title": "示例视频 A：一个很长很长的标题用来检查省略号是否正常显示", "phase": "recording", "phaseText": "录音中", "startedAt": now - 5000, "audio": {"state": "recording", "seconds": 125}, "stt": {"state": "none"}, "note": {"state": "none"}, "warnings": [], "monitor": False, "materialId": "m_a"},
+        "t_b": {"id": "t_b", "tabId": 99992, "platform": "bilibili", "title": "示例视频 B", "phase": "transcribing", "phaseText": "排队等待转写（前面还有 1 条）…", "startedAt": now - 9000, "audio": {"state": "saved", "seconds": 300}, "stt": {"state": "queued", "ahead": 1}, "note": {"state": "none"}, "warnings": [], "materialId": "m_b"},
+        "t_c": {"id": "t_c", "tabId": 99993, "platform": "douyin", "title": "示例视频 C", "phase": "done", "phaseText": "逐字稿已保存", "startedAt": now - 20000, "finishedAt": now - 1000, "audio": {"state": "saved", "seconds": 60}, "stt": {"state": "done"}, "note": {"state": "none"}, "warnings": [], "materialId": "m_c"},
+    }
+    e.T(f"await chrome.storage.session.set({{ tasks: {json.dumps(fake, ensure_ascii=False)} }}); return true")
+    time.sleep(0.6)
+    mini = e.c.eval(sid, "({ n: document.querySelectorAll('#otherArea .mini').length, stopBtn: !!document.querySelector('#otherArea .btn.danger'), head: document.querySelector('.others-head')?.textContent || '', overflow: document.documentElement.scrollWidth > window.innerWidth + 1, clipped: [...document.querySelectorAll('main > *')].some(el => el.getBoundingClientRect().right > window.innerWidth + 1) })")
+    check("界面：弹窗列出其他标签页的任务（可直接停止，显示排队与进行中数量）", mini["n"] == 3 and mini["stopBtn"] and "进行中 2" in mini["head"] and not mini["overflow"] and not mini["clipped"], mini)
+    e.c.screenshot(sid, str(OUT / "popup-multi.png"))
+    check("界面：多任务弹窗无脚本错误", not [x for x in e.c.console_errors(sid) if x])
+    e.T("await chrome.storage.session.set({ tasks: {} }); return true")
+    e.close(tid)
+    # 英文界面：切换语言后不残留中文、不溢出、无脚本错误
+    e.T("return T.patchSettings({ 'ui.lang': 'en' })")
+    for name, url, w, hgt in [("popup-en", pages[0][1], 360, 560), ("options-en", f"{e.base}/src/ui/options.html", 1100, 900), ("library-en", pages[1][1], 1280, 860)]:
+        tid, sid = e.c.new_tab("about:blank")
+        e.c.send("Emulation.setDeviceMetricsOverride", {"width": w, "height": hgt, "deviceScaleFactor": 1, "mobile": False}, session=sid)
+        e.c.send("Page.enable", session=sid)
+        e.c.send("Page.navigate", {"url": url}, session=sid)
+        time.sleep(1.8)
+        info = e.c.eval(sid, """(() => { const c = document.body.cloneNode(true); c.querySelectorAll('select, .lang-btn, .lang-switch, .t, .title, h1.d-title, .d-head h1, .src, .mini-title, article, .transcript, .kv dd').forEach(x => x.remove()); const txt = c.innerText || c.textContent || ''; const cjk = (txt.match(/[^\\n]*[\\u4e00-\\u9fff][^\\n]*/g) || []).slice(0, 5); return { lang: document.documentElement.lang, cjk, overflow: document.documentElement.scrollWidth > window.innerWidth + 1 }; })()""")
+        strict = name != "library-en"
+        check(f"界面：{name} 切换为英文（html lang=en{'、无残留中文' if strict else ''}、无横向溢出）", info["lang"] == "en" and (not strict or not info["cjk"]) and not info["overflow"], info)
+        if name == "options-en":
+            sw_ = e.c.eval(sid, "(() => { const b = [...document.querySelectorAll('.nav .lang-switch button')]; return { n: b.length, labels: b.map(x => x.textContent), pressed: b.filter(x => x.getAttribute('aria-pressed') === 'true').map(x => x.textContent), icon: !!document.querySelector('.nav .lang-switch svg') }; })()")
+            check("界面：设置页侧栏有带地球图标的语言切换（中文 / English，当前为 English）", sw_["n"] == 2 and sw_["labels"] == ["中文", "English"] and sw_["pressed"] == ["English"] and sw_["icon"], sw_)
+        if name == "popup-en":
+            check("界面：弹窗不再放语言切换按钮", e.c.eval(sid, "!document.querySelector('.lang-btn, .lang-switch')"))
+        e.c.screenshot(sid, str(OUT / f"{name}.png"))
+        check(f"界面：{name} 无脚本错误", not [x for x in e.c.console_errors(sid) if x])
+        e.close(tid)
+    e.T("return T.patchSettings({ 'ui.lang': 'zh' })")
     # 模拟 Windows（UA + 平台元数据），检查自动密度与笔记生成区布局
     for name, url, w, h in [("win-popup", pages[0][1], 360, 560), ("win-library-notes", pages[1][1], 1280, 860)]:
         tid, sid = e.c.new_tab("about:blank")
@@ -493,7 +627,7 @@ def main():
     try:
         e.T("return T.clearAll()")
         check("扩展加载、Service Worker 运行", any(t["type"] == "service_worker" and e.ext_id in t["url"] for t in e.c.targets()))
-        for s in [s_bili_subtitle, s_bili_fallback, s_bili_mismatch, s_bili_incomplete_login, s_youtube_ad, s_douyin_loop, s_duplicate_and_switch, s_manual_stop, s_long_audio, s_config_change_cancel, s_notes, s_real_capture_gate, s_local_backend]:
+        for s in [s_bili_subtitle, s_bili_fallback, s_bili_mismatch, s_bili_incomplete_login, s_youtube_ad, s_douyin_loop, s_duplicate_and_switch, s_manual_stop, s_multi_tab, s_frames, s_long_audio, s_config_change_cancel, s_notes, s_real_capture_gate, s_local_backend]:
             s(e)
         ui_screens(e)
     finally:

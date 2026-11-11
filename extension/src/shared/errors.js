@@ -1,5 +1,7 @@
 // 统一错误：stage 标明失败环节，code 为稳定的安全标识，message 为给用户看的中文说明。
 // diag 仅包含安全诊断（HTTP 状态、类型、长度），绝不包含 Key、Header、原始响应或私密正文。
+// message 以中文原文保存；显示时按 code 翻译为当前界面语言（见 ui.js errText、describeError）。
+import { t, getLang } from './i18n.js';
 
 export const STAGES = {
   detect: '识别视频',
@@ -73,6 +75,7 @@ const MESSAGES = {
   media_error: '视频播放出错。',
   ad_wait_cancelled: '已取消等待广告结束。',
   task_busy: '已有一个任务正在进行。',
+  task_limit: '同时录制的任务已达上限：请等其中一个录完，或在设置 →“录音与自动处理”中调高上限。',
   // 存储
   quota: '本地存储空间不足。',
   db: '本地数据库操作失败。',
@@ -114,6 +117,15 @@ export function toSafeError(err, stage = null) {
 
 export function describeError(e) {
   if (!e) return '';
-  const st = e.stage && STAGES[e.stage] ? `【${STAGES[e.stage]}】` : '';
-  return `${st}${e.message}${e.detail ? `（${e.detail}）` : ''}`;
+  const en = getLang() === 'en';
+  const st = e.stage && STAGES[e.stage] ? (en ? `[${t(STAGES[e.stage])}] ` : `【${STAGES[e.stage]}】`) : '';
+  const msg = e.code && MESSAGES[e.code] ? t(MESSAGES[e.code]) : t(e.message);
+  const detail = e.detail ? t(e.detail) : '';
+  return `${st}${msg}${detail ? (en ? ` (${detail})` : `（${detail}）`) : ''}`;
+}
+
+/** 阶段前缀（材料页错误提示用） */
+export function stagePrefix(stage) {
+  if (!stage || !STAGES[stage]) return '';
+  return getLang() === 'en' ? `[${t(STAGES[stage])}] ` : `【${STAGES[stage]}】`;
 }

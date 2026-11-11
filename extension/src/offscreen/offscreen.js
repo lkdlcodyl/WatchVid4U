@@ -9,7 +9,7 @@ const jobs = new Map(); // jobId -> AbortController
 
 // 保持 SW 在任务期间活跃并能感知 offscreen 存活
 setInterval(() => {
-  if (recorder.busy || jobs.size) emit('offscreen-heartbeat', { recording: recorder.busy, jobs: jobs.size });
+  if (recorder.busy || jobs.size) emit('offscreen-heartbeat', { recordingIds: recorder.ids(), jobs: jobs.size });
 }, 20000);
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -24,19 +24,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function handle(msg) {
   switch (msg.type) {
     case 'ping':
-      return { recording: recorder.busy, jobs: jobs.size };
+      return { recording: recorder.busy, recordingIds: recorder.ids(), jobs: jobs.size };
     case 'rec-start':
       return recorder.start(msg);
     case 'rec-stop':
-      return { result: await recorder.stop({ tailMs: msg.tailMs || 0 }) };
+      return { result: await recorder.stop(msg.materialId, { tailMs: msg.tailMs || 0 }) };
     case 'rec-monitor':
-      recorder.setMonitor(!!msg.on);
+      recorder.setMonitor(msg.materialId, !!msg.on);
       return {};
     case 'rec-gate':
-      recorder.setGate(!!msg.paused);
+      recorder.setGate(msg.materialId, !!msg.paused);
       return {};
     case 'rec-ad':
-      recorder.setAd(!!msg.ad);
+      recorder.setAd(msg.materialId, !!msg.ad);
       return {};
     case 'job-transcribe':
       return runJob(msg.jobId, (signal) =>

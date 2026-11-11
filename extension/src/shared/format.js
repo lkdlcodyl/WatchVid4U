@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 export const PLATFORM_LABELS = {
   bilibili: 'B站',
   youtube: 'YouTube',
@@ -6,7 +8,7 @@ export const PLATFORM_LABELS = {
 };
 
 export function platformLabel(p) {
-  return PLATFORM_LABELS[p] || '网页';
+  return t(PLATFORM_LABELS[p] || '网页');
 }
 
 export function uid(prefix = '') {
@@ -39,10 +41,10 @@ export function fmtTime(ts) {
   const now = new Date();
   const pad = (x) => String(x).padStart(2, '0');
   const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  if (d.toDateString() === now.toDateString()) return `今天 ${hm}`;
+  if (d.toDateString() === now.toDateString()) return t('今天 {hm}', { hm });
   const y = new Date(now);
   y.setDate(now.getDate() - 1);
-  if (d.toDateString() === y.toDateString()) return `昨天 ${hm}`;
+  if (d.toDateString() === y.toDateString()) return t('昨天 {hm}', { hm });
   const sameYear = d.getFullYear() === now.getFullYear();
   return `${sameYear ? '' : d.getFullYear() + '-'}${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hm}`;
 }

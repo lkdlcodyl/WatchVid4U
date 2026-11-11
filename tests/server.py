@@ -337,7 +337,11 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:  # noqa: BLE001
             j = {}
         msgs = j.get("messages", [])
-        self.record("llm", variant=variant, stream=j.get("stream"), model=j.get("model"), roles=[m.get("role") for m in msgs], user_len=sum(len(m.get("content", "")) for m in msgs if m.get("role") == "user"), user=msgs[-1]["content"][:4000] if msgs else "", system_has_mode=("模式：" in (msgs[0].get("content", "") if msgs else "")), auth=bool(self.headers.get("Authorization")))
+        def text_of(c):
+            return c if isinstance(c, str) else "".join(p.get("text", "") for p in c if isinstance(p, dict) and p.get("type") == "text")
+        last = msgs[-1]["content"] if msgs else ""
+        images = [p["image_url"]["url"] for p in last if isinstance(p, dict) and p.get("type") == "image_url"] if isinstance(last, list) else []
+        self.record("llm", variant=variant, stream=j.get("stream"), model=j.get("model"), roles=[m.get("role") for m in msgs], user_len=sum(len(text_of(m.get("content", ""))) for m in msgs if m.get("role") == "user"), user=text_of(last)[:4000], images=len(images), images_jpeg=all(u.startswith("data:image/jpeg;base64,") for u in images), image_bytes=sum(len(u) for u in images), frames_rule=("【视频画面】" in (msgs[0].get("content", "") if msgs else "")), system_has_mode=("模式：" in (msgs[0].get("content", "") if msgs else "")), auth=bool(self.headers.get("Authorization")))
         if variant == "llm-html":
             return self.send(200, "<html><body>login</body></html>", "text/html")
         if variant == "llm-stream":
