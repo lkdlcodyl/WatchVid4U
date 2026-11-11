@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WatchVid4U · 帮你看视频",
   "short_name": "WatchVid4U",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "把视频变成可保存的中文逐字稿与学习笔记：B站字幕优先，无字幕自动录音转写，播完自动暂停。",
   "minimum_chrome_version": "116",
   "icons": {
